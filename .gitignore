@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.tts-setup-tried
+
+# build downloads and scratch files (the finished database in data/ is kept)
+build/sources/*
+!build/sources/README.txt
+build/tmp/
+data/*.tmp
+
+# Android build output and the signing key (keep the key safe, never commit it)
+android/build/
+android/*.keystore
+android/*.keystore.txt

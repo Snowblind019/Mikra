@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1D2733">
+<title>Mikra</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/extra.css">
+<link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-he" lang="he">מ</span><span>Mikra</span></div>
+  <div class="top-title" id="top-title"></div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-tab="today">Today</button>
+    <button role="tab" data-tab="read">Read</button>
+    <button role="tab" data-tab="review">Review <span class="count" id="due-count"></span></button>
+    <button role="tab" data-tab="words">My words</button>
+    <button role="tab" data-tab="alphabet">Alphabet</button>
+    <button role="tab" data-tab="grammar">Grammar</button>
+    <button role="tab" data-tab="progress">Progress</button>
+    <button role="tab" data-tab="settings">Settings</button>
+  </nav>
+  <div class="script-switch seg" id="script-switch" role="group">
+    <button type="button" data-script="print" lang="he">אב</button>
+    <button type="button" data-script="cursive" class="cursive" lang="he">אב</button>
+  </div>
+  <div class="save-state" id="save-state" aria-live="polite"></div>
+</header>
+<main id="main">
+  <section id="view-today" class="view" data-view="today"></section>
+  <section id="view-read" class="view" data-view="read" hidden></section>
+  <section id="view-review" class="view" data-view="review" hidden></section>
+  <section id="view-words" class="view" data-view="words" hidden></section>
+  <section id="view-alphabet" class="view" data-view="alphabet" hidden></section>
+  <section id="view-grammar" class="view" data-view="grammar" hidden></section>
+  <section id="view-progress" class="view" data-view="progress" hidden></section>
+  <section id="view-settings" class="view" data-view="settings" hidden></section>
+</main>
+<nav class="bottom-nav" id="bottom-nav"></nav>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="modal-root"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

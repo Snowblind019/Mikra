@@ -1,0 +1,159 @@
+/* ---------- Mikra additions: cursive script, KJV, Today, decks, saved verses, audio download */
+
+@font-face { font-family: "Ktav Yad"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(../fonts/KtavYadCLM.woff2) format("woff2");
+  unicode-range: U+05D0-05EA, U+05BE, U+05C3; }
+
+/* handwriting: letters only, no vowel points (they are stripped before display) */
+.cursive, .he.cursive, [lang="he"].cursive { font-family: "Ktav Yad", var(--he-font); font-style: normal; letter-spacing: .02em; }
+.cursive-pair { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.cursive-pair .cursive { line-height: 1.25; }
+.cursive-pair .print-under { font-family: var(--he-font); font-size: .42em; color: var(--ink-faint); line-height: 1.4; }
+.wp-word.cursive { font-family: "Ktav Yad", var(--he-font); line-height: 1.3; }
+.wp-word.under { font-size: 24px; color: var(--ink-soft); margin-top: 0; }
+
+/* top bar: print / cursive switch */
+.script-switch { margin-left: auto; flex: 0 0 auto; }
+.script-switch button { font-size: 17px; padding: 2px 11px; font-family: var(--he-font); line-height: 1.5; }
+.script-switch button.cursive { font-family: "Ktav Yad", var(--he-font); }
+.script-switch + .save-state { margin-left: 0; }
+
+.field .seg { align-self: flex-start; }
+
+/* reader */
+.rt.added { font-style: italic; }
+.help-unknown.interlinear .hw:not(.help) .il { visibility: hidden; height: 0; }
+.help-unknown.interlinear .hw:not(.help) { margin-bottom: 0; }
+.hw.speaking, .rt.speaking { background: var(--gold-strong); border-radius: 4px; }
+.verse.saved .vnum button { color: var(--gold); font-weight: 700; }
+.verse-tools .icon-btn.on { color: var(--gold); }
+.dict-en { margin-top: 6px; }
+.dict-en summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); }
+.dict-en[open] summary { margin-bottom: 6px; }
+
+/* every form of a word */
+.forms { display: flex; flex-direction: column; gap: 2px; }
+.forms-group { font-size: 12.5px; font-weight: 620; color: var(--ink-soft); margin: 8px 0 2px; text-transform: none; }
+.forms-row { display: grid; grid-template-columns: minmax(90px, auto) 1fr auto auto; gap: 10px; align-items: center; padding: 2px 4px; border-radius: 6px; font-size: 13px; }
+.forms-row:hover { background: var(--paper-2); }
+.forms-row .he-btn { all: unset; cursor: pointer; text-align: right; }
+.forms-row .he { font-size: 22px; }
+.forms-row .parse { color: var(--ink-soft); }
+.forms-row .n { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+/* review */
+.card.clickable { cursor: pointer; }
+.next-hint { margin-top: 14px; font-size: 13px; color: var(--ink-faint); text-align: center; }
+.choice.locked { cursor: default; }
+.choice.locked:hover { border-color: var(--rule); }
+.choice.right.locked:hover { border-color: var(--green); }
+.reveal-line { margin-top: 10px; display: flex; gap: 8px; align-items: baseline; justify-content: center; flex-wrap: wrap; }
+.reveal-line .he { font-size: 22px; }
+.card .big-he.cursive-pair .cursive { font-size: 1em; }
+.choice.he.cursive { font-family: "Ktav Yad", var(--he-font); }
+.hkbd button { position: relative; }
+.hkbd .kh { display: block; }
+.hkbd .kl { position: absolute; right: 3px; bottom: 1px; font-family: var(--lat-font); font-size: 9.5px; color: var(--ink-faint); }
+.blank { display: inline-block; min-width: 80px; border-bottom: 2px solid var(--lapis); }
+
+/* saved verses and memorizing */
+.saved-list { display: flex; flex-direction: column; gap: 12px; }
+.saved-row { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+.saved-he { font-size: 24px; line-height: 1.8; text-align: right; }
+.memorize { max-width: 860px; }
+.mem-line { font-size: 34px; line-height: 2.1; text-align: right; padding: 18px; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); }
+.mem-word { cursor: pointer; border-radius: 5px; }
+.mem-word.shown { background: var(--gold-wash); }
+.mem-blank { display: inline-block; height: .9em; vertical-align: middle; border-bottom: 2px solid var(--ink-faint); }
+.mem-rest { color: var(--ink-faint); }
+
+/* today */
+.today .goals { display: flex; gap: 40px; flex-wrap: wrap; margin: 10px 0 24px; }
+.goal { display: flex; gap: 14px; align-items: center; }
+.ring-wrap { position: relative; width: 84px; height: 84px; }
+.ring-wrap svg { width: 84px; height: 84px; display: block; }
+.ring-wrap b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; font-variant-numeric: tabular-nums; }
+.goal-label { font-weight: 620; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.tile { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; border: 1px solid var(--rule); background: var(--surface); border-radius: 12px; padding: 12px 14px; }
+.tile-ic { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--lapis-wash); color: var(--lapis); }
+.tile-ic svg { width: 20px; height: 20px; }
+.tile-body { display: flex; flex-direction: column; }
+.today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 36px; }
+.wotd { border: 1px solid var(--rule); background: var(--surface); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.wotd .big-he { font-family: var(--he-font); font-size: 54px; line-height: 1.4; direction: rtl; }
+.wotd .tr { font-size: 18px; color: var(--lapis); }
+.wotd .gloss { font-size: 19px; text-align: center; }
+.guided { margin-top: 30px; }
+.steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
+.steps li { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: center; border: 1px solid var(--rule); background: var(--surface); border-radius: 10px; padding: 9px 12px; }
+.steps li.done { opacity: .62; }
+.steps li.next { border-color: var(--lapis); box-shadow: 0 0 0 1px var(--lapis-wash); }
+.step-mark { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--rule); display: grid; place-items: center; color: var(--green); }
+.steps li.done .step-mark { border-color: var(--green); }
+.step-mark svg { width: 15px; height: 15px; }
+
+/* progress: this week */
+.week { display: flex; gap: 10px; align-items: flex-end; margin: 6px 0 8px; }
+.week-day { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 46px; font-size: 12.5px; color: var(--ink-soft); }
+.week-day b { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.week-bar { width: 26px; height: 80px; background: var(--paper-2); border-radius: 5px; display: flex; align-items: flex-end; overflow: hidden; }
+.week-bar i { display: block; width: 100%; background: var(--gold); border-radius: 5px; }
+.week-day.met .week-bar i { background: var(--green); }
+.week-day.today span { color: var(--lapis); font-weight: 600; }
+.path-item { grid-template-columns: minmax(34px, auto) 1fr auto; }
+
+/* settings: audio download */
+.download-box { border: 1px solid var(--rule); background: var(--surface); border-radius: 12px; padding: 4px 16px 14px; margin-top: 14px; max-width: 900px; }
+.download-box h3 { margin-top: 12px; }
+
+/* grammar */
+.lesson .ex .he-ex { grid-column: 2; grid-row: 1 / span 2; white-space: nowrap; }
+.lesson .ex .he-ex .he { font-size: 27px; line-height: 1.6; }
+.lesson td.he-cell { text-align: right; white-space: nowrap; }
+.lesson td.he-cell .he { font-size: 24px; }
+.lesson .he.inline { font-size: 1.3em; }
+.gr-big { font-size: 30px; }
+.gr-verse { font-size: 32px; line-height: 1.9; text-align: right; padding: 10px 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; margin: 10px 0; }
+.gr-quote { margin: 8px 0 14px; padding: 8px 14px; border-left: 3px solid var(--lapis); background: var(--surface); border-radius: 0 8px 8px 0; font-size: 15.5px; }
+.gr-steps li { margin: 6px 0; }
+.lesson-list button.done .n { color: var(--green); }
+
+/* alphabet */
+.letter .glyph-pair { grid-row: 1 / span 3; grid-column: 2; display: flex; flex-direction: column; align-items: center; }
+.letter .glyph-pair .glyph { grid-row: auto; grid-column: auto; }
+.glyph-alt { font-size: 20px; color: var(--ink-faint); line-height: 1.2; }
+.glyph-alt:not(.cursive) { font-family: var(--he-font); }
+.letter .glyph.cursive { font-family: "Ktav Yad", var(--he-font); }
+.letter-detail .glyph-cursive { font-size: 110px; margin-top: 10px; }
+.letter-strip button.cursive { font-family: "Ktav Yad", var(--he-font); }
+.builder-out .he.cursive { display: block; color: var(--ink-soft); }
+.kb-layout { display: flex; flex-direction: column; gap: 6px; align-items: center; margin: 16px 0; direction: ltr; }
+.kb-row { display: flex; gap: 6px; }
+.kb-row:nth-child(2) { margin-left: 22px; }
+.kb-row:nth-child(3) { margin-left: 44px; }
+.kb-key { position: relative; width: 50px; height: 54px; border: 1px solid var(--rule); background: var(--surface); border-radius: 8px; cursor: pointer; }
+.kb-key:hover { border-color: var(--ink-faint); }
+.kb-he { font-family: var(--he-font); font-size: 26px; }
+.kb-he.cursive { font-family: "Ktav Yad", var(--he-font); }
+.kb-lat { position: absolute; left: 5px; top: 3px; font-size: 11px; color: var(--ink-faint); }
+.kb-key.hint { border-color: var(--lapis); background: var(--lapis-wash); }
+.kb-key.flash { border-color: var(--green); background: rgba(62, 124, 75, .14); }
+.kb-drill { max-width: 640px; margin: 10px auto 0; }
+.kb-drill .big-he span { padding: 0 2px; border-radius: 4px; }
+.kb-done { color: var(--green); }
+.kb-now { background: var(--gold-wash); box-shadow: 0 3px 0 -1px var(--gold); }
+
+@media (max-width: 760px) {
+  .script-switch { display: none; }
+  .forms-row { grid-template-columns: auto 1fr auto; }
+  .forms-row a { display: none; }
+}
+
+/* narrow windows: wide lesson tables, the vowel table and the keyboard scroll or shrink instead of widening the page */
+.lesson { min-width: 0; }
+.table-wrap { max-width: 100%; overflow-x: auto; }
+@media (max-width: 760px) {
+  .kb-key { width: 34px; height: 44px; }
+  .kb-layout { max-width: 100%; overflow-x: auto; }
+}

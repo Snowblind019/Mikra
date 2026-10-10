@@ -1,0 +1,844 @@
+// Review tab: spaced-repetition flashcards, ready-made word decks, and practice games
+// (choice, listening, typing, words in their verse, matching, hear and repeat, free flip).
+
+import { api, store, errText, dayStreak } from "./store.js";
+import { ctx } from "./ctx.js";
+import { h, clear, icon, iconBtn, he, heBig, heText, heClass, toast, shuffle, fmtInt, today, relDays, modal, isTouch, trt } from "./ui.js";
+import { tr, trn, lang, bible, meaning } from "./i18n.js";
+import { schedule, preview, isDue, dueAt } from "./fsrs.js";
+import { translit, wordTranslit, stripCantillation, consonants, unpack, glossClean, escapeHtml, speakableLemma, speakableWord, speakableText, shortParse, KEYBOARD, latinToHebrew } from "./hebrew.js";
+import { speak, stop as stopAudio } from "./audio.js";
+
+let root;
+let session = null;
+let keyHandler = null;
+let poolSource = null;
+let startToken = 0;       // a practice set that is still loading is dropped if another one was started meanwhile
+let nextCleanup = null;   // removes the "click anywhere to continue" listener
+
+// The home page counts what is due when it is drawn; redraw it when the app comes back (e.g. the next morning).
+function onVisible() {
+  if (document.visibilityState === "visible" && root && !root.hidden && !session && root.querySelector(".review-home")) home();
+}
+export function mount(el) { root = el; session = null; document.addEventListener("visibilitychange", onVisible); }
+export function show() { if (!session) home(); }
+export function hide() { stopAudio(); }
+export function unmount() { document.removeEventListener("visibilitychange", onVisible); cancelWaitForNext(); setKeys(null); session = null; startToken++; }
+
+function setKeys(fn) {
+  if (keyHandler) document.removeEventListener("keydown", keyHandler);
+  keyHandler = fn ? (e) => {
+    const view = document.getElementById("view-review");
+    if (!view || view.hidden) return;
+    // Alt+3 switches tabs and Ctrl+1 is the browser's; holding a key down must not grade card after card
+    if (e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+    // a dialog on top (e.g. "Add this deck?") must not let number keys grade the card behind it
+    if (document.querySelector("#modal-root .modal-back")) return;
+    if (e.target.closest && e.target.closest("input, textarea, select") && !e.target.classList.contains("typing-box")) return;
+    // Space / Enter on a focused button presses that button (Pause, Open in reader...), not the shortcut. Answer buttons
+    // and the listen / play-again buttons keep focus after a mouse click, so they still let Space move on.
+    if ((e.key === " " || e.key === "Enter") && e.target.closest && e.target.closest("button") && !e.target.closest(".locked, .keep-open, .icon-btn")) return;
+    fn(e);
+  } : null;
+  if (keyHandler) document.addEventListener("keydown", keyHandler);
+}
+
+function allCards() { return Object.values(store.data.cards).filter(c => !c.suspended); }
+function newSeenToday() { return (store.data.daily[today()] || {}).newSeen || 0; }
+
+function dueQueue() {
+  const now = Date.now();
+  const cards = allCards();
+  const due = cards.filter(c => c.state !== "new" && isDue(c, now)).sort((a, b) => a.due - b.due);
+  const newLeft = Math.max(0, store.settings.newPerDay - newSeenToday());
+  const fresh = cards.filter(c => c.state === "new").sort((a, b) => a.created - b.created).slice(0, newLeft);
+  // spread new cards through the due ones
+  const q = [];
+  let i = 0, j = 0;
+  while (i < due.length || j < fresh.length) {
+    if (i < due.length) q.push(due[i++]);
+    if (i < due.length) q.push(due[i++]);
+    if (j < fresh.length) q.push(fresh[j++]);
+  }
+  return q;
+}
+
+
+// Meaning of a card in the interface language, and the matching Bible's words for it.
+function cardMeaning(c) { return meaning(c); }
+function bibleLine(c) {
+  if (lang() === "ro") return c.ro && c.ro !== cardMeaning(c) ? "Cornilescu: " + c.ro : "";
+  return c.en ? "KJV: " + c.en : "";
+}
+function cardParse(c) { return c.parseCode ? shortParse(c.parseCode) : (c.parse || ""); }
+
+// ------------------------------------------------------------------ home
+
+const DECKS = [
+  ["top100", ["The 100 most common words", "Cele mai folosite 100 de cuvinte"], ["About half of all the words in the Hebrew Bible.", "Cam jumătate din toate cuvintele din Biblia ebraică."]],
+  ["top500", ["The 500 most common words", "Cele mai folosite 500 de cuvinte"], ["Enough to recognise most of a simple story.", "Destul cât să recunoști cea mai mare parte dintr-o povestire simplă."]],
+  ["top1000", ["The 1,000 most common words", "Cele mai folosite 1.000 de cuvinte"], ["The core vocabulary of the Old Testament.", "Vocabularul de bază al Vechiului Testament."]],
+  ["top2000", ["The 2,000 most common words", "Cele mai folosite 2.000 de cuvinte"], ["Everything that appears about 15 times or more.", "Tot ce apare de aproximativ 15 ori sau mai des."]],
+  ["freq10", ["Every word used 10+ times (no names)", "Toate cuvintele folosite de 10+ ori (fără nume)"], ["The classic goal of a full Hebrew course, about 1,900 words.", "Ținta obișnuită a unui curs complet de ebraică, cam 1.900 de cuvinte."]],
+  ["names", ["Names of people and places", "Nume de oameni și locuri"], ["Most common names first.", "Întâi numele cele mai des întâlnite."]],
+];
+
+function home() {
+  session = null;
+  startToken++;
+  cancelWaitForNext();
+  setKeys(null);
+  stopAudio();
+  clear(root);
+  const cards = allCards();
+  const q = dueQueue();
+  const dueN = q.filter(c => c.state !== "new").length;
+  const newN = q.length - dueN;
+  const page = h("div", { class: "page review-home" });
+  page.append(h("h1", null, tr("Review", "Recapitulare")),
+    h("p", { class: "lede" }, tr(
+      "Flashcards use spaced repetition: each word comes back right before you would forget it. The practice games below don't change the schedule, so play them as much as you like.",
+      "Cartonașele folosesc repetiția spațiată: fiecare cuvânt revine chiar înainte să-l uiți. Jocurile de exersare de mai jos nu schimbă programul, așa că joacă-le cât vrei.")));
+  page.append(h("div", { class: "stat-line" },
+    stat(dueN, tr("due now", "de repetat acum")), stat(newN, tr("new today", "noi azi")), stat(cards.length, tr("cards in total", "cartonașe în total")),
+    stat(store.knownKeys().size, tr("words known", "cuvinte știute")), stat(dayStreak(), tr("day streak", "zile la rând"))));
+  // the queue is built again on Start: the page may have been open since before midnight
+  const startBtn = h("button", { class: "btn primary", type: "button", disabled: !q.length, onclick: () => { const fresh = dueQueue(); if (fresh.length) startFlash(fresh); else home(); } },
+    icon("play"), q.length ? tr(`Start review (${q.length})`, `Începe recapitularea (${q.length})`) : tr("Nothing due right now", "Nimic de repetat acum"));
+  page.append(h("div", { class: "row" }, startBtn,
+    !cards.length ? h("span", { class: "muted" }, tr("Pick a word deck below to get started, or add words from the reader.", "Alege mai jos un pachet de cuvinte ca să începi, sau adaugă cuvinte din cititor.")) : null));
+  if (cards.length && !q.length) {
+    const next = cards.filter(c => c.state !== "new").sort((a, b) => a.due - b.due)[0];
+    if (next) page.append(h("p", { class: "muted small" }, tr(`Next card is due in ${relDays(dueAt(next))}.`, `Următorul cartonaș vine peste ${relDays(dueAt(next))}.`)));
+  }
+  const newWaiting = cards.filter(c => c.state === "new").length;
+  if (newWaiting > newN && newN >= 0) {
+    page.append(h("p", { class: "muted small" }, trn(newWaiting, "new card is waiting", "new cards are waiting", "cartonaș nou așteaptă", "cartonașe noi așteaptă") + tr(
+      `. ${store.settings.newPerDay} come in each day (change it in Settings, Review).`,
+      `. Intră câte ${store.settings.newPerDay} pe zi (schimbi asta în Setări, Recapitulare).`)));
+  }
+
+  // ready-made decks
+  page.append(h("h2", null, tr("Word decks", "Pachete de cuvinte")));
+  page.append(h("p", { class: "muted" }, tr(
+    "Add a whole list of words to your flashcards at once. The most useful words come first, and new cards come in a few each day, so a big deck is fine.",
+    "Adaugă dintr-odată o listă întreagă de cuvinte la cartonașe. Cele mai folositoare cuvinte vin primele, iar cartonașele noi intră câte puțin în fiecare zi, așa că un pachet mare nu e o problemă.")));
+  const decks = h("div", { class: "modes" });
+  for (const [id, title, desc] of DECKS) {
+    decks.append(h("button", { class: "mode", type: "button", onclick: () => addDeck(id, tr(title[0], title[1])) }, h("b", null, tr(title[0], title[1])), h("span", null, tr(desc[0], desc[1]))));
+  }
+  const bookSel = h("select", { "aria-label": tr("Book", "Cartea") }, ctx.books.map(b => h("option", { value: b.idx }, ctx.bookName(b.idx))));
+  decks.append(h("div", { class: "mode", style: { cursor: "default" } }, h("b", null, tr("All the words of one book", "Toate cuvintele dintr-o carte")),
+    h("div", { class: "row", style: { marginTop: "6px" } }, bookSel,
+      h("button", { class: "btn small", type: "button", onclick: () => addDeck("book:" + bookSel.value, ctx.bookName(Number(bookSel.value))) }, icon("plus"), tr("Add", "Adaugă")))));
+  page.append(decks);
+
+  // practice
+  page.append(h("h2", null, tr("Practice", "Exersare")));
+  const pool = h("div", { class: "row", style: { marginBottom: "14px" } });
+  const sources = [
+    ["mine", tr(`My words (${cards.length})`, `Cuvintele mele (${cards.length})`)],
+    ["top200", tr("Most common 200 words", "Cele mai folosite 200 de cuvinte")],
+    ["top500", tr("Most common 500", "Cele mai folosite 500")],
+    ["top1000", tr("Most common 1,000", "Cele mai folosite 1.000")],
+    ["top2000", tr("Most common 2,000", "Cele mai folosite 2.000")],
+    ["names", tr("Names", "Nume")],
+    ["chapter", tr("Last chapter I read", "Ultimul capitol citit")],
+  ];
+  if (!poolSource) poolSource = cards.length >= 4 ? "mine" : "top200";
+  const srcSel = h("select", { "aria-label": tr("Practice words from", "Exersează cuvintele din"), onchange: (e) => { poolSource = e.target.value; } },
+    sources.map(([v, l]) => h("option", { value: v, selected: v === poolSource, disabled: v === "mine" && cards.length < 4 }, l)));
+  pool.append(h("span", { class: "muted" }, tr("Practice words from", "Exersează cuvintele din")), srcSel);
+  page.append(pool);
+  const modes = [
+    ["choice", tr("Pick the meaning", "Alege înțelesul"), tr("See the Hebrew, choose what it means. Then the other way round.", "Vezi ebraica și alegi ce înseamnă. Apoi invers.")],
+    ["listen", tr("Listening", "Ascultare"), tr("Hear a word and pick how it is written.", "Auzi un cuvânt și alegi cum se scrie.")],
+    ["repeat", tr("Hear and repeat", "Ascultă și repetă"), tr("Hear each word twice, then say it out loud yourself.", "Auzi fiecare cuvânt de două ori, apoi îl spui și tu cu voce tare.")],
+    ["typing", tr("Spell it", "Scrie-l"), tr("Hear it and see the meaning, then type it in Hebrew letters.", "Îl auzi și vezi înțelesul, apoi îl scrii cu litere ebraice.")],
+    ["cloze", tr("Words in their verse", "Cuvinte în verset"), tr("A verse with one word missing. Choose the word that fits.", "Un verset cu un cuvânt lipsă. Alegi cuvântul potrivit.")],
+    ["match", tr("Match pairs", "Perechi"), tr("Connect six Hebrew words with their meanings, against the clock.", "Legi șase cuvinte ebraice de înțelesurile lor, contra cronometru.")],
+    ["flashfree", tr("Flip through cards", "Răsfoiește cartonașe"), tr("Go through cards without grading, just to refresh.", "Treci prin cartonașe fără notă, doar ca să-ți împrospătezi memoria.")],
+  ];
+  page.append(h("div", { class: "modes" }, modes.map(([id, title, desc]) =>
+    h("button", { class: "mode", type: "button", onclick: () => startPractice(id, poolSource) }, h("b", null, title), h("span", null, desc)))));
+  root.append(page);
+}
+
+function stat(n, label) { return h("div", { class: "stat" }, h("b", null, fmtInt(n)), h("span", null, label)); }
+
+function deckCard(it) {
+  return { id: "L:" + it.key, kind: "lemma", key: it.key, heb: it.hebrew, translit: it.translit, gloss: it.gloss, glossRo: it.glossRo || "" };
+}
+
+async function addDeck(id, title) {
+  let res;
+  try { res = await api.get("deck", { id }); } catch (e) { toast(errText(e)); return; }
+  const items = res.items.filter(it => !store.hasCard("L:" + it.key) && !store.isKnown(it.key));
+  if (!items.length) { toast(tr("You already have every word of this deck.", "Ai deja toate cuvintele din acest pachet.")); return; }
+  const days = Math.ceil(items.length / Math.max(1, store.settings.newPerDay));
+  modal(tr("Add this deck?", "Adaugi pachetul?"), h("div", null,
+    h("p", null, `${title}: ` + trn(items.length, "new word", "new words", "cuvânt nou", "cuvinte noi") + tr(" for your flashcards (words you already have or know are skipped).",
+      " pentru cartonașe (cele pe care le ai deja sau le știi sunt sărite).")),
+    h("p", { class: "muted" }, tr(`At ${trn(store.settings.newPerDay, "new word", "new words", "", "")} a day that is about ${trn(days, "day", "days", "", "")}. You can change the daily number in Settings.`,
+      `Cu ${trn(store.settings.newPerDay, "cuvânt nou", "", "cuvânt nou", "cuvinte noi")} pe zi, asta înseamnă cam ${trn(days, "", "", "zi", "zile")}. Numărul pe zi îl schimbi în Setări.`))), [
+    { label: tr("Cancel", "Renunță") },
+    { label: tr("Add the words", "Adaugă cuvintele"), primary: true, onClick: () => {
+      const n = store.addCards(items.map(deckCard));
+      toast(tr("Added ", "Am adăugat ") + trn(n, "word", "words", "cuvânt", "cuvinte"));
+      if (!session) home(); // a review started while the deck was loading keeps going
+    } },
+  ]);
+}
+
+// ------------------------------------------------------------------ flashcards (scheduled)
+
+function startFlash(queue) {
+  session = { mode: "flash", queue: queue.slice(), later: [], done: 0, total: queue.length, correct: 0, start: Date.now(), first: new Map(), reviews: 0 };
+  nextFlash();
+}
+
+function pickDirection(card) {
+  if (card.state === "new" || card.kind === "phrase") return "recognize";
+  const d = store.settings.reviewDirections;
+  const opts = ["recognize", "recall", "listen"].filter(x => d[x]);
+  if (!opts.length) return "recognize";
+  return opts[Math.floor(Math.random() * opts.length)];
+}
+
+function nextFlash() {
+  const s = session;
+  let card;
+  for (;;) {
+    card = s.queue.shift();
+    if (!card && s.later.length) {
+      s.later.sort((a, b) => a.due - b.due);
+      card = s.later.shift();
+    }
+    if (!card) return finish();
+    // cards deleted or paused in My words since the session started are skipped, not brought back
+    const cur = store.card(card.id);
+    if (cur && !cur.suspended) { card = cur; break; }
+    s.total = Math.max(s.done, s.total - 1);
+  }
+  s.card = card;
+  s.dir = pickDirection(card);
+  s.revealed = false;
+  s.shownAt = Date.now();
+  renderFlash();
+}
+
+function studyShell(label) {
+  clear(root);
+  const s = session;
+  const done = s.done;
+  const total = s.total || 1;
+  const wrap = h("div", { class: "study" });
+  wrap.append(h("div", { class: "study-top" },
+    h("button", { class: "btn ghost small", type: "button", onclick: () => { stopAudio(); home(); } }, icon("left"), tr("End", "Gata")),
+    h("span", null, label),
+    h("div", { class: "progress-thin" }, h("i", { style: { width: Math.min(100, (done / total) * 100) + "%" } })),
+    h("span", null, `${done} / ${total}`)));
+  root.append(wrap);
+  return wrap;
+}
+
+function cardAudioText(card) {
+  if (card.kind === "lemma") return speakableLemma(card.heb, card.key, store.settings);
+  return speakableText(card.heb, store.settings); // forms and phrases: the Divine Name as set in Settings, Audio
+}
+
+function cardTranslit(card) {
+  return translit(card.translit || "", store.settings);
+}
+
+function renderFlash() {
+  const s = session;
+  const card = s.card;
+  const wrap = studyShell(tr("Flashcards", "Cartonașe"));
+  const box = h("div", { class: "card clickable", title: trt("Click to show the answer", "Apasă ca să vezi răspunsul") });
+  const big = heBig(stripCantillation(card.heb), "big-he" + (card.kind === "phrase" ? " phrase" : ""));
+  const audioBtn = iconBtn("speaker", tr("Listen", "Ascultă"), (e) => { e.stopPropagation(); speak(cardAudioText(card)); });
+  if (s.dir === "recognize") {
+    box.append(h("div", { class: "prompt" }, card.kind === "form" ? tr("What does this form mean?", "Ce înseamnă forma aceasta?")
+      : card.kind === "phrase" ? tr("What does this phrase mean?", "Ce înseamnă expresia aceasta?") : tr("What does this word mean?", "Ce înseamnă cuvântul acesta?")), big, audioBtn);
+  } else if (s.dir === "recall") {
+    box.append(h("div", { class: "prompt" }, tr("Say or write the Hebrew", "Spune sau scrie cuvântul în ebraică")),
+      h("div", { style: { fontSize: "24px", margin: "18px 0 4px" } }, cardMeaning(card)),
+      bibleLine(card) ? h("div", { class: "muted" }, bibleLine(card)) : null);
+  } else {
+    box.append(h("div", { class: "prompt" }, tr("Listen. What does it mean?", "Ascultă. Ce înseamnă?")),
+      h("button", { class: "btn keep-open", type: "button", style: { margin: "26px 0", fontSize: "17px", padding: "12px 20px" }, onclick: (e) => { e.stopPropagation(); speak(cardAudioText(card)); } }, icon("speaker"), tr("Play again", "Ascultă din nou")));
+    setTimeout(() => speak(cardAudioText(card)), 150);
+  }
+  const answer = h("div", { class: "answer", hidden: true });
+  box.append(answer);
+  box.addEventListener("click", (e) => { if (!s.revealed && !e.target.closest("button")) reveal(); });
+  wrap.append(box);
+  const showBtn = h("button", { class: "btn primary", type: "button", style: { marginTop: "16px", width: "100%", justifyContent: "center", padding: "11px" }, onclick: reveal },
+    tr("Show answer ", "Arată răspunsul "), h("span", { class: "kbd", style: { color: "inherit", borderColor: "currentColor" } }, tr("Space", "Spațiu")));
+  wrap.append(showBtn);
+  const grades = h("div", { class: "grades", hidden: true });
+  wrap.append(grades);
+  const extra = h("div", { class: "row", style: { marginTop: "14px", justifyContent: "center" } },
+    card.ctx ? h("button", { class: "btn ghost small", type: "button", onclick: () => ctx.navigate("read", { b: card.ctx.b, c: card.ctx.c, v: card.ctx.v, w: card.ctx.w }) }, icon("book"), tr("Open in reader", "Deschide în cititor")) : null,
+    h("button", { class: "btn ghost small", type: "button", onclick: () => { card.suspended = true; store.changed("cards"); toast(tr("Card paused. Resume it in My words.", "Cartonaș pus pe pauză. Îl reiei din Cuvintele mele.")); session.total--; nextFlash(); } }, tr("Pause this card", "Pune pe pauză")),
+    card.key ? h("button", { class: "btn ghost small", type: "button", onclick: () => { if (!store.data.known[card.key]) store.toggleKnown(card.key); card.suspended = true; store.changed("cards"); toast(tr("Marked as known", "Marcat ca știut")); session.total--; nextFlash(); } }, tr("I know it well", "Îl știu bine")) : null);
+  wrap.append(extra);
+
+  function reveal() {
+    if (s.revealed) return;
+    s.revealed = true;
+    showBtn.hidden = true;
+    answer.hidden = false;
+    box.classList.remove("clickable");
+    box.removeAttribute("title");
+    if (s.dir !== "recognize") answer.append(heBig(stripCantillation(card.heb), "big-he" + (card.kind === "phrase" ? " phrase" : ""), { style: { fontSize: "52px" } }));
+    answer.append(h("div", { class: "row", style: { justifyContent: "center" } }, h("div", { class: "tr", html: cardTranslit(card) }),
+      iconBtn("speaker", tr("Listen", "Ascultă"), () => speak(cardAudioText(card))), iconBtn("slow", tr("Listen slowly", "Ascultă rar"), () => speak(cardAudioText(card), { slow: true }))));
+    answer.append(h("div", { class: "gloss" }, cardMeaning(card)));
+    if (cardParse(card)) answer.append(h("div", { class: "muted small" }, cardParse(card)));
+    if (bibleLine(card) && s.dir === "recognize") answer.append(h("div", { class: "muted" }, bibleLine(card)));
+    const note = card.key ? store.note(card.key) : "";
+    if (note) answer.append(h("div", { class: "small", style: { whiteSpace: "pre-wrap" } }, note));
+    if (card.ctx) {
+      const slot = h("div", { class: "ctx" }, h("div", { class: "muted small" }, tr("Loading the verse…", "Se încarcă versetul…")));
+      answer.append(slot);
+      loadContext(card).then(node => { clear(slot); if (node) slot.append(node); });
+    }
+    if (s.dir === "recognize" && card.kind !== "phrase") speak(cardAudioText(card));
+    const pv = preview(card);
+    const labels = [["again", tr("Again", "Din nou"), 1], ["hard", tr("Hard", "Greu"), 2], ["good", tr("Good", "Bine"), 3], ["easy", tr("Easy", "Ușor"), 4]];
+    grades.hidden = false;
+    for (const [cls, label, g] of labels) {
+      grades.append(h("button", { class: "grade " + cls, type: "button", onclick: () => rate(g) }, h("b", null, label), h("span", null, pv[g - 1], "  ", h("span", { class: "kbd" }, String(g)))));
+    }
+  }
+
+  setKeys((e) => {
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); if (!s.revealed) reveal(); else rate(3); }
+    else if (s.revealed && /^[1-4]$/.test(e.key)) rate(Number(e.key));
+    else if (e.key === "p") speak(cardAudioText(card));
+  });
+}
+
+function rate(g) {
+  const s = session;
+  if (!s || !s.card) return;
+  const before = s.card;
+  if (!store.card(before.id)) { nextFlash(); return; } // deleted in another tab meanwhile
+  const wasNew = before.state === "new";
+  const after = schedule(before, g);
+  store.data.cards[before.id] = after;
+  store.data.log.push({ id: before.id, t: Date.now(), g, ms: Date.now() - s.shownAt, dir: s.dir, st: before.state });
+  store.bumpDaily("reviews");
+  s.reviews++;
+  if (wasNew) store.bumpDaily("newSeen");
+  // Hard is still a recall (the scheduler treats it as one), so it counts as remembered
+  if (g >= 2) { store.bumpDaily("correct"); s.correct++; }
+  if (!s.first.has(before.id)) s.first.set(before.id, g >= 2);
+  store.changed("review");
+  ctx.refreshDue();
+  if (after.due - Date.now() < 20 * 60000) s.later.push(after);
+  else s.done++;
+  nextFlash();
+}
+
+function finish() {
+  setKeys(null);
+  const s = session;
+  const wrap = studyShell(tr("Done", "Gata"));
+  const mins = Math.max(1, Math.round((Date.now() - s.start) / 60000));
+  const day = store.data.daily[today()] || {};
+  const firstPct = Math.round(([...s.first.values()].filter(Boolean).length / Math.max(1, s.first.size)) * 100);
+  const goal = store.settings.goalReviews || 0;
+  wrap.append(h("div", { class: "done-screen" },
+    h("div", { class: "big" }, s.done ? tr("Review finished", "Recapitulare terminată") : tr("Nothing left to review", "Nu mai e nimic de repetat")),
+    s.done ? h("p", { class: "muted" }, trn(s.done, "card", "cards", "cartonaș", "cartonașe") + tr(" in about ", " în aproximativ ") +
+      trn(mins, "minute", "minutes", "minut", "minute") + tr(`. ${firstPct}% remembered on the first try.`, `. ${firstPct}% ținute minte din prima.`)) : null,
+    h("p", { class: "muted" }, tr("Today: ", "Azi: ") + trn(day.reviews || 0, "review", "reviews", "repetare", "repetări") +
+      (goal ? tr(` of your goal of ${goal}`, ` din ținta de ${goal}`) : "") + ", " +
+      trn(Math.round((day.secs || 0) / 60), "minute of study", "minutes of study", "minut de studiu", "minute de studiu") + "."),
+    h("div", { class: "row", style: { justifyContent: "center", marginTop: "18px" } },
+      h("button", { class: "btn primary", type: "button", onclick: home }, tr("Back to review", "Înapoi la recapitulare")),
+      h("button", { class: "btn", type: "button", onclick: () => ctx.navigate("read") }, tr("Keep reading", "Citește mai departe")))));
+  session = null;
+}
+
+// The verse a card comes from, in the Bible chosen for the reader, with the word marked on both sides.
+async function verseParts(c) {
+  const res = await api.get("verse", { b: c.b, c: c.c, v: c.v });
+  const row = res.verse;
+  const ver = bible() === "kjv" && res.en ? "kjv" : "ro";
+  const side = ver === "kjv"
+    ? { text: res.en[0], tok: res.en[1], links: store.alignFor(c.b, c.c, c.v, "kjv") || res.en[2] || [] }
+    : { text: row[2], tok: row[3], links: store.alignFor(c.b, c.c, c.v, "ro") || row[5] || [] };
+  return { row, words: row[4].map(unpack), side, ver };
+}
+
+function sideHtml(side, from, to) {
+  const hits = new Set();
+  for (let i = 0; i < side.links.length; i += 3) if (side.links[i + 1] >= from && side.links[i + 1] <= to) hits.add(side.links[i]);
+  let out = "", pos = 0;
+  for (let i = 0; i < side.tok.length; i += 2) {
+    out += escapeHtml(side.text.slice(pos, side.tok[i]));
+    const w = escapeHtml(side.text.slice(side.tok[i], side.tok[i + 1]));
+    out += hits.has(i / 2) ? "<mark>" + w + "</mark>" : w;
+    pos = side.tok[i + 1];
+  }
+  return out + escapeHtml(side.text.slice(pos));
+}
+
+async function loadContext(card) {
+  const c = card.ctx;
+  if (!c) return null;
+  try {
+    const { words, side, ver } = await verseParts(c);
+    const from = c.w, to = c.to !== undefined ? c.to : c.w;
+    const heHtml = words.map((w, i) => {
+      if (w.extra.x === "X") return "";
+      const t = escapeHtml(stripCantillation(w.text));
+      return (i >= from && i <= to ? "<mark>" + t + "</mark>" : t) + (w.punct.includes("־") ? "־" : " ");
+    }).join("");
+    return h("div", null, h("div", { class: "ref" }, ctx.refText(c.b, c.c, c.v)),
+      h("span", { class: "he", lang: "he", dir: "rtl", html: heHtml }), h("div", { lang: ver === "kjv" ? "en" : "ro", html: sideHtml(side, from, to) }));
+  } catch (e) { return null; }
+}
+
+// ------------------------------------------------------------------ practice pools
+
+function poolItem(it) {
+  const item = { key: it.key, heb: it.hebrew || it.heb, translit: it.translit, gloss: it.gloss, glossRo: it.glossRo || "", ro: it.ro, en: it.en, ctx: it.ctx, kind: it.kind || "lemma" };
+  item.mean = meaning(item);
+  return item;
+}
+
+async function buildPool(source) {
+  if (source === "mine") {
+    const cards = allCards().filter(c => c.kind !== "phrase");
+    // weaker and newer cards come first
+    return shuffle(cards).sort((a, b) => (a.stability || 0) - (b.stability || 0)).slice(0, 40).map(poolItem);
+  }
+  if (source === "chapter") {
+    const p = store.data.pos || { b: 0, c: 1 };
+    const res = await api.get("chapter_vocab", { b: p.b, c: p.c });
+    const items = res.items.filter(it => !/-|^\(/.test(it.gloss)).slice(0, 40);
+    const chap = await api.get("chapter", { b: p.b, c: p.c });
+    return items.map(it => {
+      let c0 = null;
+      for (const vrow of chap.verses) {
+        const wi = vrow[4].findIndex(w => w[6] === it.key);
+        if (wi >= 0) { c0 = { b: p.b, c: p.c, v: vrow[0], w: wi, form: vrow[4][wi][0].replace(/\//g, "") }; break; }
+      }
+      return poolItem(Object.assign({}, it, { ctx: c0 }));
+    });
+  }
+  const id = source === "top200" ? "top200" : source;
+  const res = await api.get("deck", { id });
+  return shuffle(res.items.filter(it => meaning(it))).slice(0, 40).map(poolItem);
+}
+
+// Hebrew as it is shown on a button: in cursive the points are gone, so דָּבָר and דֶּבֶר look the same.
+const shownHeb = (heb) => heText(stripCantillation(heb || ""));
+
+// Wrong answers that can't also be right: not the same word, not a word with the same meaning (אָדָם / אִישׁ "man"),
+// and nothing that looks the same as the answer or as another option.
+async function distractors(target, n, field) {
+  const shown = (x) => field === "heb" ? shownHeb(x.heb) : x[field];
+  const ok = (x) => x[field] && x.key !== target.key && shown(x) !== shown(target) && !(x.mean && x.mean === target.mean);
+  const pool = (session && session.pool) || [];
+  let cands = pool.filter(ok);
+  if (cands.length < n) {
+    try {
+      const extra = await api.get("random_lemmas", { n: 20, maxrank: 1200 });
+      cands = cands.concat(extra.map(poolItem).filter(ok));
+    } catch (_) { /* offline */ }
+  }
+  const seen = new Set([shown(target)]);
+  const seenMean = new Set([target.mean]);
+  const out = [];
+  for (const c of shuffle(cands)) {
+    if (seen.has(shown(c)) || (c.mean && seenMean.has(c.mean))) continue;
+    seen.add(shown(c));
+    if (c.mean) seenMean.add(c.mean);
+    out.push(c);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+async function startPractice(mode, source) {
+  if (mode === "flashfree") { return startFree(source); }
+  const token = ++startToken;
+  let pool;
+  try { pool = await buildPool(source); } catch (e) { if (token === startToken) toast(errText(e)); return; }
+  if (token !== startToken || session) return; // something else was started (or the tab was rebuilt) while loading
+  if (mode === "cloze") pool = pool.filter(x => x.ctx);
+  if (pool.length < 4) {
+    toast(mode === "cloze" ? tr("Not enough words with a verse yet. Add words from the reader first.", "Încă nu sunt destule cuvinte cu verset. Adaugă întâi cuvinte din cititor.")
+      : tr("Not enough words in this set yet.", "Încă nu sunt destule cuvinte în acest set."));
+    return;
+  }
+  session = { mode, pool, i: 0, total: Math.min(mode === "match" ? 3 : 12, mode === "match" ? Math.floor(pool.length / 6) || 1 : pool.length), done: 0, right: 0, start: Date.now() };
+  if (mode === "match") return matchRound();
+  nextPractice();
+}
+
+function nextPractice() {
+  const s = session;
+  if (!s) return;
+  if (s.done >= s.total) return practiceDone();
+  const item = s.pool[s.i++ % s.pool.length];
+  if (s.mode === "choice") return choiceQ(item, s.done % 2 === 1);
+  if (s.mode === "listen") return listenQ(item);
+  if (s.mode === "repeat") return repeatQ(item);
+  if (s.mode === "typing") return typingQ(item);
+  if (s.mode === "cloze") return clozeQ(item);
+}
+
+function practiceDone() {
+  setKeys(null);
+  const s = session;
+  const wrap = studyShell(tr("Practice", "Exersare"));
+  const secs = Math.round((Date.now() - s.start) / 1000);
+  wrap.append(h("div", { class: "done-screen" },
+    h("div", { class: "big" }, s.mode === "repeat" || s.mode === "free" ? trn(s.total, "word", "words", "cuvânt", "cuvinte") : tr(`${s.right} of ${s.total} right`, `${s.right} din ${s.total} corecte`)),
+    h("p", { class: "muted" }, `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`),
+    h("div", { class: "row", style: { justifyContent: "center", marginTop: "18px" } },
+      h("button", { class: "btn primary", type: "button", onclick: () => { const m = s.mode; session = { ...s, pool: shuffle(s.pool), i: 0, done: 0, right: 0, start: Date.now() }; if (m === "match") matchRound(); else if (m === "free") freeCard(); else nextPractice(); } }, tr("Again", "Încă o dată")),
+      h("button", { class: "btn", type: "button", onclick: home }, tr("Back to review", "Înapoi la recapitulare")))));
+  session = null;
+}
+
+function cancelWaitForNext() {
+  if (nextCleanup) { nextCleanup(); nextCleanup = null; }
+}
+
+// After an answer the result stays on screen; the next click anywhere (or Space / Enter) moves on.
+function waitForNext(go) {
+  cancelWaitForNext();
+  const hint = h("div", { class: "next-hint" }, isTouch() ? tr("Tap anywhere to continue", "Atinge oriunde ca să mergi mai departe")
+    : tr("Click anywhere or press Space to continue", "Apasă oriunde sau tasta Spațiu ca să mergi mai departe"));
+  const card = root.querySelector(".card");
+  if (card) card.append(hint);
+  const my = session;
+  let done = false;
+  const cleanup = () => { done = true; root.removeEventListener("click", onClick, true); };
+  nextCleanup = cleanup;
+  const next = () => {
+    if (done) return;
+    cleanup();
+    nextCleanup = null;
+    setKeys(null);
+    go();
+  };
+  const onClick = (e) => {
+    // the game was left (End, another tab rebuilt the view): let this click through and stop listening
+    if (session !== my || !my) { cleanup(); return; }
+    if (e.target.closest(".study-top") || e.target.closest(".icon-btn") || e.target.closest(".keep-open")) return;
+    e.preventDefault(); e.stopPropagation();
+    next();
+  };
+  // attach after the click that gave the answer has finished
+  setTimeout(() => { if (!done) root.addEventListener("click", onClick, true); }, 0);
+  setKeys((e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); next(); } else if (e.key === "p") e.preventDefault(); });
+}
+
+function answerFeedback(ok, buttons, rightBtn) {
+  const s = session;
+  // locked, not disabled: a disabled button would swallow the "click anywhere to continue" click
+  for (const b of buttons) { b.classList.add("locked"); b.setAttribute("aria-disabled", "true"); }
+  if (rightBtn) rightBtn.classList.add("right");
+  if (ok) s.right++;
+  s.done++;
+  waitForNext(() => nextPractice());
+}
+
+function choiceButton(o, reverse, onPick) {
+  return h("button", { class: "choice" + (reverse ? " he" + heClass() : ""), type: "button", lang: reverse ? "he" : null,
+    onclick: (e) => onPick(o, e.currentTarget) }, reverse ? heText(stripCantillation(o.heb)) : o.mean);
+}
+
+async function choiceQ(item, reverse) {
+  const my = session;
+  const wrap = studyShell(tr("Pick the meaning", "Alege înțelesul"));
+  const box = h("div", { class: "card" });
+  wrap.append(box);
+  const field = reverse ? "heb" : "mean";
+  const others = await distractors(item, 3, field);
+  if (session !== my) return; // ended while loading
+  const opts = shuffle([item, ...others]);
+  if (reverse) box.append(h("div", { class: "prompt" }, tr("Which Hebrew word means", "Care cuvânt ebraic înseamnă")), h("div", { style: { fontSize: "24px", margin: "12px 0" } }, item.mean));
+  else box.append(h("div", { class: "prompt" }, tr("What does it mean?", "Ce înseamnă?")), heBig(stripCantillation(item.heb)), iconBtn("speaker", tr("Listen", "Ascultă"), () => speak(speakableLemma(item.heb, item.key, store.settings))));
+  const grid = h("div", { class: "choices" });
+  const buttons = opts.map(o => choiceButton(o, reverse, pick));
+  grid.append(...buttons);
+  box.append(grid);
+  const rightBtn = buttons[opts.indexOf(item)];
+  function pick(o, btn) {
+    if (btn.classList.contains("locked")) return;
+    const ok = o === item;
+    if (!ok) btn.classList.add("wrong");
+    box.append(h("div", { class: "muted reveal-line" }, he(stripCantillation(item.heb)), "  ", h("span", { html: translit(item.translit, store.settings) }), "  ", item.mean));
+    if (!reverse) speak(speakableLemma(item.heb, item.key, store.settings));
+    answerFeedback(ok, buttons, rightBtn);
+  }
+  setKeys((e) => { if (/^[1-4]$/.test(e.key)) { const b = buttons[Number(e.key) - 1]; if (b) b.click(); } });
+}
+
+async function listenQ(item) {
+  const my = session;
+  const wrap = studyShell(tr("Listening", "Ascultare"));
+  const box = h("div", { class: "card" });
+  wrap.append(box);
+  const others = await distractors(item, 3, "heb");
+  if (session !== my) return;
+  const opts = shuffle([item, ...others]);
+  const play = () => speak(speakableLemma(item.heb, item.key, store.settings));
+  box.append(h("div", { class: "prompt" }, tr("Which word did you hear?", "Ce cuvânt ai auzit?")),
+    h("button", { class: "btn keep-open", type: "button", style: { margin: "18px 0", padding: "12px 20px", fontSize: "17px" }, onclick: play }, icon("speaker"), tr("Play", "Ascultă")),
+    h("button", { class: "btn ghost small keep-open", type: "button", onclick: () => speak(speakableLemma(item.heb, item.key, store.settings), { slow: true }) }, icon("slow"), tr("Slower", "Mai rar")));
+  const grid = h("div", { class: "choices" });
+  const buttons = opts.map(o => choiceButton(o, true, pick));
+  grid.append(...buttons);
+  box.append(grid);
+  setTimeout(play, 200);
+  const rightBtn = buttons[opts.indexOf(item)];
+  function pick(o, btn) {
+    if (btn.classList.contains("locked")) return;
+    const ok = o === item;
+    if (!ok) btn.classList.add("wrong");
+    box.append(h("div", { class: "muted reveal-line" }, h("span", { html: translit(item.translit, store.settings) }), "  ", item.mean));
+    answerFeedback(ok, buttons, rightBtn);
+  }
+  setKeys((e) => { if (/^[1-4]$/.test(e.key)) { const b = buttons[Number(e.key) - 1]; if (b) b.click(); } else if (e.key === "p") play(); });
+}
+
+// Shadowing: hear it twice, say it yourself. No grading.
+async function repeatQ(item) {
+  const my = session;
+  const wrap = studyShell(tr("Hear and repeat", "Ascultă și repetă"));
+  const box = h("div", { class: "card" });
+  wrap.append(box);
+  const text = speakableLemma(item.heb, item.key, store.settings);
+  box.append(h("div", { class: "prompt" }, tr("Listen, then say it out loud", "Ascultă, apoi spune-l cu voce tare")),
+    heBig(stripCantillation(item.heb)),
+    h("div", { class: "tr", html: translit(item.translit, store.settings) }),
+    h("div", { class: "gloss" }, item.mean),
+    h("div", { class: "row", style: { justifyContent: "center", marginTop: "12px" } },
+      h("button", { class: "btn keep-open", type: "button", onclick: () => speak(text) }, icon("speaker"), tr("Again", "Din nou")),
+      h("button", { class: "btn keep-open", type: "button", onclick: () => speak(text, { slow: true }) }, icon("slow"), tr("Slowly", "Rar"))));
+  session.done++;
+  const step = session.i;
+  const still = () => session === my && session.i === step;
+  waitForNext(() => nextPractice());
+  if (await speak(text) && still()) {
+    await new Promise(r => setTimeout(r, 900));
+    if (still()) await speak(text, { slow: true });
+  }
+}
+
+// On-screen Hebrew keyboard; each key also shows the Latin key that types it.
+export function hebrewKeyboard(onKey) {
+  const latinOf = {};
+  for (const [lat, heb] of Object.entries(KEYBOARD)) latinOf[heb] = lat;
+  const rows = ["קראטוןםפ", "שדגכעיחלךף", "זסבהנמצתץ"];
+  const kb = h("div", { class: "hkbd" });
+  for (const r of rows) kb.append(h("div", { class: "krow" }, [...r].map(ch => h("button", { type: "button", onclick: () => onKey(ch) },
+    h("span", { class: "kh" }, ch), h("span", { class: "kl" }, (latinOf[ch] || "").toUpperCase())))));
+  kb.append(h("div", { class: "krow" },
+    h("button", { type: "button", class: "wide", onclick: () => onKey(" ") }, tr("space", "spațiu")),
+    h("button", { type: "button", class: "wide", onclick: () => onKey("\b") }, tr("delete", "șterge"))));
+  return kb;
+}
+
+const FINALS = { "ך": "כ", "ם": "מ", "ן": "נ", "ף": "פ", "ץ": "צ" };
+const normCons = (s) => consonants(s).replace(/[ךםןףץ]/g, c => FINALS[c]);
+
+function typingQ(item) {
+  const wrap = studyShell(tr("Spell it", "Scrie-l"));
+  const box = h("div", { class: "card" });
+  wrap.append(box);
+  const play = () => speak(speakableLemma(item.heb, item.key, store.settings));
+  const input = h("input", { type: "text", class: "typing-box", dir: "rtl", lang: "he", autocomplete: "off", spellcheck: "false", "aria-label": tr("Type the Hebrew word", "Scrie cuvântul în ebraică") });
+  // without a Hebrew keyboard layout, Latin keys are turned into Hebrew letters
+  input.addEventListener("input", () => {
+    const conv = latinToHebrew(input.value);
+    if (conv !== input.value) { const end = conv.length; input.value = conv; input.setSelectionRange(end, end); }
+  });
+  const hint = h("div", { class: "muted", style: { minHeight: "24px" } });
+  box.append(h("div", { class: "prompt" }, tr("Type the consonants. Vowel points are not needed.", "Scrie consoanele. Nu e nevoie de vocale.")),
+    h("div", { style: { fontSize: "22px", margin: "6px 0" } }, item.mean),
+    h("div", { class: "row" }, iconBtn("speaker", tr("Listen", "Ascultă"), play), iconBtn("slow", tr("Listen slowly", "Ascultă rar"), () => speak(speakableLemma(item.heb, item.key, store.settings), { slow: true })),
+      h("button", { class: "btn ghost small", type: "button", onclick: () => { hint.innerHTML = translit(item.translit, store.settings); } }, tr("Show sound", "Arată pronunția"))),
+    hint, input,
+    h("div", { class: "small faint" }, tr("No Hebrew keyboard? Just type the Latin keys: the letters on the keys below show which key gives which Hebrew letter.",
+      "Nu ai tastatură ebraică? Scrie cu tastele obișnuite: literele mici de pe tastele de mai jos arată ce tastă dă fiecare literă ebraică.")));
+  const kb = hebrewKeyboard((ch) => {
+    if (ch === "\b") input.value = input.value.slice(0, -1);
+    else input.value += ch;
+    if (!isTouch()) input.focus(); // on a phone, focusing would open the system keyboard over this one
+  });
+  const check = h("button", { class: "btn primary", type: "button", style: { marginTop: "12px" }, onclick: submit }, tr("Check", "Verifică"));
+  box.append(kb, check);
+  setTimeout(() => { play(); if (!isTouch()) input.focus(); }, 150);
+  let answered = false;
+  function submit() {
+    if (answered) return;
+    answered = true;
+    // some dictionary forms list two spellings ("יְרוּשָׁלִַם, יְרוּשְׁלֵם"); either one is right
+    const alts = String(item.heb || "").split(/\s*,\s*/).filter(Boolean);
+    const ok = alts.some(a => normCons(input.value) === normCons(a));
+    if (ok) session.right++;
+    session.done++;
+    input.style.borderColor = ok ? "var(--green)" : "var(--red)";
+    input.readOnly = true;
+    check.remove();
+    box.append(h("div", { style: { marginTop: "12px" } },
+      heBig(stripCantillation(item.heb), "big-he", { style: { fontSize: "44px" } }),
+      h("div", { html: translit(item.translit, store.settings) }),
+      h("div", { class: ok ? "" : "muted" }, ok ? tr("Correct", "Corect") : tr(`You wrote ${input.value || "nothing"}. Compare the letters above.`, `Ai scris ${input.value || "nimic"}. Compară cu literele de mai sus.`))));
+    waitForNext(() => nextPractice());
+  }
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !answered) { e.preventDefault(); e.stopPropagation(); submit(); } });
+}
+
+async function clozeQ(item) {
+  const my = session;
+  const wrap = studyShell(tr("Words in their verse", "Cuvinte în verset"));
+  const box = h("div", { class: "card", style: { alignItems: "stretch", textAlign: "left" } });
+  wrap.append(box);
+  const c = item.ctx;
+  let parts;
+  try { parts = await verseParts(c); } catch (e) { if (session !== my) return; session.done++; return nextPractice(); }
+  if (session !== my) return;
+  const { words, side, ver } = parts;
+  const target = words[c.w];
+  if (!target) { session.done++; return nextPractice(); }
+  // Forms saved with a card can carry the word's punctuation ("וַ/יְהִי־", "אוֹר׃ ס"); options are cleaned the same way,
+  // so a trailing maqaf or ס can't give the answer away.
+  // only trailing punctuation goes: a few words have a maqaf or space inside them (בִּנְהַר־פְּרָת)
+  const cleanForm = (f) => stripCantillation(f || "").replace(/[\/\\]/g, "").replace(/[\s־׀׃]+(?:[פס]\s*)?$/, "");
+  const form = stripCantillation(target.text).replace(/[\/\\]/g, "");
+  // options: forms of other pool words found in their verses, or their dictionary forms
+  const others = (await distractors(item, 3, "heb")).map(o => cleanForm((o.ctx && o.ctx.form) ? o.ctx.form : o.heb));
+  if (session !== my) return;
+  const seenOpt = new Set([shownHeb(form)]);
+  const opts = shuffle([form, ...others.filter(x => { const k = shownHeb(x); if (!x || seenOpt.has(k)) return false; seenOpt.add(k); return true; })].slice(0, 4));
+  const blank = '<span class="blank">&nbsp;</span>';
+  const heHtml = words.map((w, i) => w.extra.x === "X" ? "" : (i === c.w ? blank : escapeHtml(stripCantillation(w.text))) + (w.punct.includes("־") ? "־" : " ")).join("");
+  const heEl = h("div", { class: "he", lang: "he", dir: "rtl", style: { fontSize: "28px", lineHeight: "1.9", textAlign: "right" }, html: heHtml });
+  box.append(h("div", { class: "muted small" }, ctx.refText(c.b, c.c, c.v)), heEl, h("div", { lang: ver === "kjv" ? "en" : "ro", style: { margin: "8px 0", fontSize: "16px" }, html: sideHtml(side, c.w, c.w) }));
+  const grid = h("div", { class: "choices" });
+  const buttons = opts.map(o => h("button", { class: "choice he" + heClass(), type: "button", lang: "he", onclick: (e) => pick(o, e.currentTarget) }, heText(o)));
+  grid.append(...buttons);
+  box.append(grid);
+  const rightBtn = buttons[opts.indexOf(form)];
+  function pick(o, btn) {
+    if (btn.classList.contains("locked")) return;
+    const ok = o === form;
+    if (!ok) btn.classList.add("wrong");
+    heEl.innerHTML = words.map((w, i) => w.extra.x === "X" ? "" : (i === c.w ? "<mark>" + escapeHtml(stripCantillation(w.text)) + "</mark>" : escapeHtml(stripCantillation(w.text))) + (w.punct.includes("־") ? "־" : " ")).join("");
+    const mean = lang() === "ro" ? (item.ro || item.glossRo || glossClean(target.gloss.join(" "))) : glossClean(target.gloss.join(" "));
+    box.append(h("div", { class: "muted reveal-line" }, h("span", { html: translit(wordTranslit(target, store.settings), store.settings) }), ": ", mean));
+    speak(speakableWord(target, store.settings));
+    answerFeedback(ok, buttons, rightBtn);
+  }
+  setKeys((e) => { if (/^[1-4]$/.test(e.key)) { const b = buttons[Number(e.key) - 1]; if (b) b.click(); } });
+}
+
+function matchRound() {
+  const s = session;
+  if (s.done >= s.total) return practiceDone();
+  const wrap = studyShell(tr("Match pairs", "Perechi"));
+  const box = h("div", { class: "card" });
+  wrap.append(box);
+  const items = [];
+  const seenG = new Set();
+  const seenH = new Set();
+  for (const it of shuffle(s.pool)) {
+    if (seenG.has(it.mean) || seenH.has(shownHeb(it.heb))) continue; // two words that look alike (cursive) can't both be in a round
+    seenG.add(it.mean);
+    seenH.add(shownHeb(it.heb));
+    items.push(it);
+    if (items.length >= 6) break;
+  }
+  const t0 = Date.now();
+  let mistakes = 0, left = items.length, sel = null;
+  const timer = h("div", { class: "muted" }, "0s");
+  const tick = setInterval(() => { if (!document.body.contains(timer)) return clearInterval(tick); timer.textContent = Math.round((Date.now() - t0) / 1000) + "s"; }, 500);
+  const grid = h("div", { class: "match-grid" });
+  // pair by position in this round, not by word key: a word and one of its forms share the same key
+  const heCol = shuffle(items.map((it, i) => [it, i])).map(([it, i]) => h("button", { class: "choice he" + heClass(), type: "button", lang: "he", dataset: { k: String(i) } }, heText(stripCantillation(it.heb))));
+  const glCol = shuffle(items.map((it, i) => [it, i])).map(([it, i]) => h("button", { class: "choice", type: "button", dataset: { k: String(i) } }, it.mean));
+  for (let i = 0; i < items.length; i++) grid.append(heCol[i], glCol[i]);
+  const onPick = (btn) => {
+    if (btn.classList.contains("done")) return;
+    if (!sel) { sel = btn; btn.classList.add("sel"); return; }
+    if (sel === btn) { btn.classList.remove("sel"); sel = null; return; }
+    const sameSide = (heCol.includes(sel) && heCol.includes(btn)) || (glCol.includes(sel) && glCol.includes(btn));
+    if (sameSide) { sel.classList.remove("sel"); sel = btn; btn.classList.add("sel"); return; }
+    if (sel.dataset.k === btn.dataset.k) {
+      const heb = heCol.includes(sel) ? sel : btn;
+      const it = items[Number(heb.dataset.k)];
+      speak(speakableLemma(it.heb, it.key, store.settings));
+      sel.classList.add("done"); btn.classList.add("done"); sel.classList.remove("sel");
+      left--;
+      if (!left) {
+        clearInterval(tick);
+        s.done++;
+        if (!mistakes) s.right++;
+        box.append(h("div", { style: { marginTop: "12px" } }, tr(`Done in ${Math.round((Date.now() - t0) / 1000)}s with ${mistakes} mistake${mistakes === 1 ? "" : "s"}.`,
+          `Gata în ${Math.round((Date.now() - t0) / 1000)} s, cu ${mistakes} ${mistakes === 1 ? "greșeală" : "greșeli"}.`)));
+        waitForNext(() => matchRound());
+      }
+    } else {
+      mistakes++;
+      const a = sel, b = btn;
+      a.classList.add("wrong"); b.classList.add("wrong");
+      setTimeout(() => { a.classList.remove("wrong", "sel"); b.classList.remove("wrong"); }, 450);
+    }
+    sel = null;
+  };
+  for (const b of [...heCol, ...glCol]) b.addEventListener("click", () => onPick(b));
+  box.append(h("div", { class: "row", style: { width: "100%", justifyContent: "space-between", marginBottom: "10px" } }, h("div", { class: "prompt" }, tr(isTouch() ? "Tap a Hebrew word, then its meaning" : "Click a Hebrew word, then its meaning", "Apasă un cuvânt ebraic, apoi înțelesul lui")), timer), grid);
+}
+
+// ------------------------------------------------------------------ free flip
+
+async function startFree(source) {
+  const token = ++startToken;
+  let pool;
+  try { pool = await buildPool(source); } catch (e) { if (token === startToken) toast(errText(e)); return; }
+  if (token !== startToken || session) return;
+  if (!pool.length) { toast(tr("No words in this set yet.", "Încă nu sunt cuvinte în acest set.")); return; }
+  session = { mode: "free", pool, i: 0, total: pool.length, done: 0, right: 0, start: Date.now() };
+  freeCard();
+}
+
+function freeCard() {
+  const s = session;
+  if (s.i >= s.pool.length) return practiceDone();
+  const item = s.pool[s.i];
+  s.done = s.i;
+  const wrap = studyShell(tr("Flip through", "Răsfoiește"));
+  const box = h("div", { class: "card clickable", title: trt("Click to flip", "Apasă ca să întorci") });
+  const ans = h("div", { class: "answer", hidden: true },
+    h("div", { class: "tr", html: translit(item.translit, store.settings) }), h("div", { class: "gloss" }, item.mean),
+    bibleLine(item) ? h("div", { class: "muted" }, bibleLine(item)) : null);
+  box.append(heBig(stripCantillation(item.heb)), iconBtn("speaker", tr("Listen", "Ascultă"), (e) => { e.stopPropagation(); speak(speakableLemma(item.heb, item.key, store.settings)); }), ans);
+  // first click shows the answer, the second goes to the next card
+  box.addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+    if (ans.hidden) ans.hidden = false;
+    else { s.i++; freeCard(); }
+  });
+  wrap.append(box, h("div", { class: "row", style: { justifyContent: "center", marginTop: "14px" } },
+    h("button", { class: "btn", type: "button", onclick: () => { if (s.i > 0) { s.i--; freeCard(); } } }, icon("left"), tr("Back", "Înapoi")),
+    h("button", { class: "btn keep-open", type: "button", onclick: () => { ans.hidden = !ans.hidden; } }, tr("Flip", "Întoarce")),
+    h("button", { class: "btn primary", type: "button", onclick: () => { s.i++; freeCard(); } }, tr("Next", "Următorul"), icon("right"))));
+  setKeys((e) => {
+    if (e.key === " ") { e.preventDefault(); if (ans.hidden) ans.hidden = false; else { s.i++; freeCard(); } }
+    else if (e.key === "ArrowRight" || e.key === "Enter") { s.i++; freeCard(); }
+    else if (e.key === "ArrowLeft" && s.i > 0) { s.i--; freeCard(); }
+  });
+}
