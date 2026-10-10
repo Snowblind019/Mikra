@@ -285,11 +285,26 @@ async function doSearch(q, input) {
 }
 
 function highlightText(text, q) {
-  const norm = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const t = norm(text), nq = norm(q);
-  const i = t.indexOf(nq);
+  const norm = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // Fold the text one character at a time and remember where each folded character came from, so the mark lands on
+  // the right letters even when folding changes the length (accents typed as separate marks, İ, and so on).
+  let t = "";
+  const from = [];
+  for (let k = 0; k < text.length;) {
+    const ch = String.fromCodePoint(text.codePointAt(k));
+    const f = norm(ch);
+    for (let j = 0; j < f.length; j++) from.push(k);
+    t += f;
+    k += ch.length;
+  }
+  const nq = norm(q);
+  const i = nq ? t.indexOf(nq) : -1;
   if (i < 0) return escapeHtml(text);
-  return escapeHtml(text.slice(0, i)) + "<mark>" + escapeHtml(text.slice(i, i + q.length)) + "</mark>" + escapeHtml(text.slice(i + q.length));
+  const a = from[i];
+  const last = from[i + nq.length - 1];
+  let b = last + String.fromCodePoint(text.codePointAt(last)).length;
+  while (b < text.length && !norm(text[b])) b++; // accents that belong to the last letter
+  return escapeHtml(text.slice(0, a)) + "<mark>" + escapeHtml(text.slice(a, b)) + "</mark>" + escapeHtml(text.slice(b));
 }
 
 // ------------------------------------------------------------------ loading and rendering

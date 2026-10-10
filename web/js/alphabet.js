@@ -544,6 +544,7 @@ function keyboard() {
       `${right} din ${total} corecte` + (mins > 0.1 ? `, ${Math.round(typed / mins)} litere pe minut` : ""));
   }
   function press(heb) {
+    if (pos >= word.length) return; // the word is done; the next one appears in a moment
     if (!started) started = Date.now();
     const want = word[pos];
     total++;
@@ -565,10 +566,11 @@ function keyboard() {
     const view = document.getElementById("view-alphabet");
     if (!view || view.hidden || sub !== "keyboard" || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target.closest && e.target.closest("input, textarea, select")) return;
-    let ch = e.key;
-    if (/^[א-ת]$/.test(ch)) { e.preventDefault(); press(ch); return; }
-    ch = KEYBOARD[ch.toLowerCase()];
-    if (ch) { e.preventDefault(); press(ch); }
+    const ch = /^[א-ת]$/.test(e.key) ? e.key : KEYBOARD[e.key.toLowerCase()];
+    if (!ch) return; // arrows, Space, Page Down and the rest keep working, also when held
+    e.preventDefault();
+    if (e.repeat) return; // a held letter key is one press, not a row of wrong answers
+    press(ch);
   } };
   document.addEventListener("keydown", keyDrill.onKey);
   next();

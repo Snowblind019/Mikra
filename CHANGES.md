@@ -1,5 +1,48 @@
 # Changes
 
+## 2.2.1: security and bug review
+
+### Security
+
+- The grammar search only runs the patterns the lessons use. Before, it ran any pattern it was sent, and one like `(.*)*x` froze the whole desktop app for minutes (Python's regex engine holds every request while it matches). The Android app had the same endpoint.
+- The desktop app now needs a key for your progress, like the Android app. Other programs and user accounts on the computer can reach the app's address, but without the key they can't read or change your progress. The key is in `server-key` in your data folder, readable only by you, and the browser keeps it as a cookie.
+  - The launcher opens the window with a one-time start link (valid for two minutes, one use), because other user accounts can read a browser's command line. The terminal prints a link with the key itself, for opening Mikra by hand.
+  - Starting Mikra a second time first checks that the running copy has the same key, without sending the key: something else could be listening on the port. If it isn't Mikra with your data folder, the new copy starts on the next port.
+  - Each port has its own cookie name, so two copies with different data folders don't overwrite each other's key.
+  - A browser without the key is told to open Mikra from its shortcut.
+- Android: another app on the phone could hold all 24 of the server's connections, by sending a byte now and then or by asking for files and never reading the answers, and Mikra showed a blank page. Now when the server is full it closes the oldest connection that never sent the key (whatever it is doing), then the oldest idle one. Request headers have to arrive within 10 seconds in total, idle connections close after 5, and a GET with a body is refused before anything is read. Tested: the whole app works normally while another program keeps both kinds of pressure on the server.
+- `build-apk.sh` passes the new signing key's password to keytool through the environment instead of its command line (where `ps` shows it), and creates every file readable only by you.
+- Audio setup installs a fixed edge-tts version (7.2.8) and no longer falls back to `pip install --break-system-packages`.
+
+### Fixes
+
+- A study day runs from 4 a.m. to 4 a.m. A card graded at 23:50 with a one-day interval was due again at midnight, ten minutes later, and a session past midnight got a second day of new cards. Daily goals, the streak, the week and 30-day charts and the word of the day use the same day. Backup file names keep the calendar date.
+- The due day is counted in calendar days, so the night the clocks change no longer makes a card due at once or a day late.
+- Typing drill: a held letter key, or a key pressed right after a word was finished, no longer counts as a wrong answer. Arrow keys and Space still work when held.
+- Search: the highlight covers exactly the word found, also when an accent is typed as a separate mark.
+- Review: audio that starts a moment after a card appears no longer plays after you press End or switch tabs.
+- Restore backup: a memorizing level that isn't 0 to 3 is reset to 0 (it made Easier and Harder count to NaN), and `__proto__` keys are dropped.
+- A note with half an emoji in it (cut in the middle of one) made every save fail on the desktop and was saved as "?" on Android. Both now save it.
+- A `userdata.json` that can't be read for a moment (too many open files, say) is an error the page retries, not an empty start a save could write over. A damaged one is moved aside once instead of copied on every page load (desktop and Android).
+- Closing the window: the last-moment save is only sent when it fits the browser's 64 KB limit for that kind of request; larger progress is kept in the browser's copy and sent on the next start, as before.
+- A number too big for the database (`?b=99999999999999999999`) is answered with "bad request" instead of a server error.
+- Audio setup: if it fails (no internet, say), it is tried again the next day instead of never. On Ubuntu and WSL the message says to install `python3-venv`.
+- Android: the chapter cache could mix up chapters (book 0, chapter 1001 gave Exodus 1). A failed save to Downloads left an empty file. The first search held up every other request while it built its word lists. Server errors are now written to the phone's log.
+- README: the Android app works offline, except that an online-only Hebrew voice sends the words it reads to its service.
+
+## 2.2.0: the grammar course
+
+### New
+
+- Grammar: 64 lessons instead of 19, arranged in six parts from beginner to advanced (Getting started, Nouns and the words around them, The verb, Weak verbs, Building sentences, Reading the text). The 19 old lessons are kept and extended; 45 are new. New topics include the vowel signs, shva and dagesh, the object marker, noun patterns and how nouns change with endings, adjectives and comparison, demonstratives, prepositions with endings, 11–19 and the tens, questions, negation, weqatal, object endings on verbs, stative verbs, one lesson each on Niphal, Piel/Pual, Hiphil/Hophal, Hithpael and the rare stems, charts for all seven stems, every class of weak verb, the 25 most common verbs with their real forms, verbless sentences, word order, אֲשֶׁר, כִּי, “to have”, time expressions, the infinitive and participle in use, conditions, purpose, oaths, direct speech, the directional ending, pausal forms, Hebrew poetry, the names of God, and Aramaic grammar. Every example is a real verse (checked against the text) with its KJV or Cornilescu rendering.
+- The lesson list is grouped by part with a count of lessons done; on wide screens it scrolls on its own, on phones the drop-down is grouped the same way. Each lesson shows where it sits (“The verb · Lesson 29 of 64”).
+- Lessons are saved by name instead of by position, so lessons you had marked as done stay done after this update.
+
+### Fixes
+
+- Three examples in the old lessons quoted a form that is not the one in the verse (דְּבַר־ for דְבַר־, בְּנֵי for וּבְנֵי, גּוֹי for לְגוֹי); they now quote the text as it stands.
+- Lesson titles that mix Hebrew words with commas keep the commas in the right place.
+
 ## 2.1.1: transliteration spelling, security and bug review
 
 ### New

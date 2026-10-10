@@ -1,7 +1,8 @@
 // API access plus the user's saved data (cards, known words, notes, settings, link fixes).
 // Data lives in a JSON file next to the app's user folder; the server writes it, with daily backups.
 
-import { today, toast } from "./ui.js";
+import { today, dateKey, toast } from "./ui.js";
+import { studyDate } from "./fsrs.js";
 import { tr } from "./i18n.js";
 
 export const api = {
@@ -36,6 +37,7 @@ export function errText(e) {
     [/edge-tts is not installed/i, ["edge-tts is not installed", "edge-tts nu este instalat"]],
     [/bad pattern/i, ["this search can't be run", "căutarea aceasta nu se poate face"]],
     [/^bad request/i, ["the request was not understood", "cererea nu a fost înțeleasă"]],
+    [/^no key$/i, ["open Mikra from its shortcut again", "deschide Mikra din nou din scurtătura ei"]],
     [/server error/i, ["the app server had an error (see its terminal)", "serverul aplicației a avut o eroare (vezi terminalul lui)"]],
   ];
   for (const [re, pair] of known) if (re.test(m)) return tr(pair[0], pair[1]);
@@ -107,9 +109,18 @@ let conflict = false;     // another window saved newer data; this one stops sav
 let inflightSaved = 0;    // _saved of the save request in flight (see beforeunload and load)
 let failedSaves = 0;      // saves that failed in a row: the next try waits longer, and only the first one warns
 
+// JSON.parse keeps a "__proto__" key as an ordinary property, but copying it with Object.assign would change the
+// copy's prototype. The app never writes that name, so a restored file that has one gets it removed.
+function dropProtoKeys(x, depth = 0) {
+  if (!x || typeof x !== "object" || depth > 20) return;
+  if (Object.prototype.hasOwnProperty.call(x, "__proto__")) delete x["__proto__"];
+  for (const v of Object.values(x)) if (v && typeof v === "object") dropProtoKeys(v, depth + 1);
+}
+
 // Fills in anything missing so a partial or older file can't break the app.
 function normalize(src) {
   src = src && typeof src === "object" && !Array.isArray(src) ? src : {};
+  dropProtoKeys(src);
   const out = Object.assign(DEFAULT_DATA(), src);
   const st = src.settings && typeof src.settings === "object" ? src.settings : {};
   out.settings = Object.assign({ ...DEFAULT_SETTINGS }, st);
@@ -138,6 +149,8 @@ function normalize(src) {
   }
   // one bad entry in a restored or hand-edited file must not blank a whole tab
   for (const k of ["daily", "saved"]) for (const [id, v] of Object.entries(out[k])) if (!isObj(v)) delete out[k][id];
+  // memorizing level 0-3 (a text or a fraction here made Easier and Harder count to NaN)
+  for (const v of Object.values(out.saved)) if (!(Number.isInteger(v.level) && v.level >= 0 && v.level <= 3)) v.level = 0;
   for (const day of Object.values(out.daily)) for (const [f, v] of Object.entries(day)) if (!Number.isFinite(v)) delete day[f];
   // settings out of range or of the wrong type (sizes of 5000 px, a missing "known after" number...)
   const s = out.settings;
@@ -228,6 +241,11 @@ export const store = {
       try {
         const r = await fetch("/api/userdata", { method: "PUT", headers: { "Content-Type": "application/json" }, body });
         if (r.status === 409) { onConflict(); return; }
+        if (r.status === 403) {
+          let err = "";
+          try { err = (await r.json()).error || ""; } catch (_) { /* not JSON */ }
+          if (err === "no key") throw new Error("no key");
+        }
         if (!r.ok) throw new Error(r.statusText);
         const res = await r.json();
         if (Number.isInteger(res.rev)) rev = res.rev;
@@ -237,7 +255,9 @@ export const store = {
       } catch (e) {
         lastSaveOk = false;
         const down = e instanceof TypeError; // fetch itself failed: no server; otherwise the server answered with an error
-        setSaveState(down ? tr("Not saved: the app server is not running", "Nesalvat: serverul aplicației nu rulează") : tr("Not saved", "Nesalvat"));
+        const noKey = e && e.message === "no key"; // the key changed (server-key deleted, say): the window needs the start link
+        setSaveState(down ? tr("Not saved: the app server is not running", "Nesalvat: serverul aplicației nu rulează")
+          : noKey ? tr("Not saved: open Mikra from its shortcut again", "Nesalvat: deschide Mikra din nou din scurtătură") : tr("Not saved", "Nesalvat"));
         if (!failedSaves) toast(tr("Your progress could not be saved. Trying again…", "Progresul nu s-a putut salva. Încerc din nou…"), 5000);
         failedSaves++;
         // try again later (5 s, 10 s, ... up to a minute); this also lets the flush on pause retry
@@ -351,7 +371,7 @@ export const store = {
     const bridge = typeof window !== "undefined" && window.MikraAndroid;
     if (!bridge || !bridge.saveFile) return true;
     try {
-      const r = String(bridge.saveFile(`mikra-before-${reason}-${today()}.json`, "application/json", JSON.stringify(data, null, 1)) || "");
+      const r = String(bridge.saveFile(`mikra-before-${reason}-${dateKey(new Date())}.json`, "application/json", JSON.stringify(data, null, 1)) || "");
       if (r.startsWith("error:")) return !!file;
       return true;
     } catch (_) { return !!file; }
@@ -362,7 +382,7 @@ export const store = {
 // Today counts once it has either; an empty today doesn't break a streak that ran until yesterday.
 export function dayStreak() {
   let n = 0;
-  const d = new Date();
+  const d = studyDate();
   for (let i = 0; i < 3650; i++) {
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const day = data.daily[k];
@@ -423,6 +443,11 @@ window.addEventListener("beforeunload", () => {
     // a save still in flight may land after this window is gone; note which one, so load() can tell
     const local = saving && inflightSaved ? `{"_inflightSaved":${inflightSaved},` + body.slice(1) : body;
     try { localStorage.setItem(LOCAL_KEY, local); } catch (_) { /* ignore */ }
-    try { navigator.sendBeacon && navigator.sendBeacon("/api/userdata", new Blob([body], { type: "application/json" })); } catch (_) { /* ignore */ }
+    // Browsers refuse a beacon over 64 KB, which progress passes after a few weeks of study. In that case the copy
+    // just written to localStorage is what keeps the last changes: load() sends it to the server on the next start.
+    try {
+      const blob = new Blob([body], { type: "application/json" });
+      if (navigator.sendBeacon && blob.size < 60000) navigator.sendBeacon("/api/userdata", blob);
+    } catch (_) { /* ignore */ }
   }
 });

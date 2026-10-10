@@ -10,6 +10,7 @@
 #
 # Settings (environment variables): ANDROID_JAR, BUILD_TOOLS, MIKRA_KEYSTORE, MIKRA_KEYSTORE_PASS.
 set -eu
+umask 077 # the signing key, its password file and the build output are readable only by you
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
@@ -50,8 +51,9 @@ echo "4/5 signing"
 PASSFILE="$KEYSTORE.txt"
 if [ ! -f "$KEYSTORE" ]; then
   PASS=${MIKRA_KEYSTORE_PASS:-$(od -An -N18 -tx1 /dev/urandom | tr -d ' \n')}
-  keytool -genkeypair -keystore "$KEYSTORE" -storetype PKCS12 -alias mikra -keyalg RSA -keysize 3072 -validity 36500 \
-    -storepass "$PASS" -keypass "$PASS" -dname "CN=Mikra, O=Snowblind019" >/dev/null 2>&1
+  # the password goes to keytool through the environment: on its command line, other users could see it in ps
+  MIKRA_KS_PASS=$PASS keytool -genkeypair -keystore "$KEYSTORE" -storetype PKCS12 -alias mikra -keyalg RSA -keysize 3072 \
+    -validity 36500 -storepass:env MIKRA_KS_PASS -keypass:env MIKRA_KS_PASS -dname "CN=Mikra, O=Snowblind019" >/dev/null 2>&1
   printf '%s\n' "$PASS" > "$PASSFILE"
   chmod 600 "$KEYSTORE" "$PASSFILE"
   echo "   created $KEYSTORE (password in $PASSFILE): keep both safe"

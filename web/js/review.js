@@ -242,6 +242,10 @@ function studyShell(label) {
   return wrap;
 }
 
+// A delayed autoplay plays only while Review is still on screen (End, or another tab, within the delay used to play
+// it anyway).
+function reviewVisible() { return !!root && root.isConnected && !root.closest("[hidden]"); }
+
 function cardAudioText(card) {
   if (card.kind === "lemma") return speakableLemma(card.heb, card.key, store.settings);
   return speakableText(card.heb, store.settings); // forms and phrases: the Divine Name as set in Settings, Audio
@@ -268,7 +272,7 @@ function renderFlash() {
   } else {
     box.append(h("div", { class: "prompt" }, tr("Listen. What does it mean?", "Ascultă. Ce înseamnă?")),
       h("button", { class: "btn keep-open", type: "button", style: { margin: "26px 0", fontSize: "17px", padding: "12px 20px" }, onclick: (e) => { e.stopPropagation(); speak(cardAudioText(card)); } }, icon("speaker"), tr("Play again", "Ascultă din nou")));
-    setTimeout(() => speak(cardAudioText(card)), 150);
+    setTimeout(() => { if (session === s && s.card === card && reviewVisible()) speak(cardAudioText(card)); }, 150);
   }
   const answer = h("div", { class: "answer", hidden: true });
   box.append(answer);
@@ -601,7 +605,8 @@ async function listenQ(item) {
   const buttons = opts.map(o => choiceButton(o, true, pick));
   grid.append(...buttons);
   box.append(grid);
-  setTimeout(play, 200);
+  const step = my.i;
+  setTimeout(() => { if (session === my && my.i === step && reviewVisible()) play(); }, 200);
   const rightBtn = buttons[opts.indexOf(item)];
   function pick(o, btn) {
     if (btn.classList.contains("locked")) return;
@@ -655,6 +660,7 @@ const FINALS = { "ך": "כ", "ם": "מ", "ן": "נ", "ף": "פ", "ץ": "צ" };
 const normCons = (s) => consonants(s).replace(/[ךםןףץ]/g, c => FINALS[c]);
 
 function typingQ(item) {
+  const my = session, step = session && session.i;
   const wrap = studyShell(tr("Spell it", "Scrie-l"));
   const box = h("div", { class: "card" });
   wrap.append(box);
@@ -680,7 +686,7 @@ function typingQ(item) {
   });
   const check = h("button", { class: "btn primary", type: "button", style: { marginTop: "12px" }, onclick: submit }, tr("Check", "Verifică"));
   box.append(kb, check);
-  setTimeout(() => { play(); if (!isTouch()) input.focus(); }, 150);
+  setTimeout(() => { if (session === my && my.i === step && reviewVisible()) { play(); if (!isTouch()) input.focus(); } }, 150);
   let answered = false;
   function submit() {
     if (answered) return;

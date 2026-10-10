@@ -2,7 +2,7 @@
 Pronunciation audio.
 
 Uses edge-tts (Microsoft's online neural voices, free, no account) when it is installed:
-    pip install edge-tts
+    pip install edge-tts==7.2.8   (the version run.sh and run.bat install)
 Every clip is cached on disk, so a word only needs the internet the first time it is played.
 If edge-tts is missing or offline, the app falls back to the browser's own Hebrew voice when one exists.
 """
@@ -50,7 +50,7 @@ def status():
         return {"engine": "edge-tts", "ok": True, "message": msg, "voices": VOICES}
     return {"engine": None, "ok": False, "voices": VOICES,
             "message": "edge-tts is not installed, so the app will use your browser's Hebrew voice if it has one. "
-                       "For the best audio run:  pip install edge-tts"}
+                       "For the best audio run:  pip install edge-tts==7.2.8"}
 
 
 def _lock_for(key):
@@ -63,7 +63,7 @@ def synthesize(text, voice, rate, cache_dir):
         return None, "empty text"
     if voice not in VOICES:
         voice = "he-IL-AvriNeural"
-    if not re.match(r"^[+-]\d{1,2}%$", rate or ""):
+    if not re.fullmatch(r"[+-][0-9]{1,2}%", rate or ""):
         rate = "+0%"
     os.makedirs(cache_dir, exist_ok=True)
     key = hashlib.sha1(f"{voice}|{rate}|{text}".encode("utf-8")).hexdigest()

@@ -33,7 +33,7 @@ import java.util.zip.Inflater;
  * Keep the two in step: a change to an endpoint in server.py belongs here too.
  */
 final class Api {
-    static final String VERSION = "2.1.1";
+    static final String VERSION = "2.2.1";
     static final long MAX_BODY = 64L * 1024 * 1024;
 
     /** A request the app should not have sent: answered with 400, like KeyError/ValueError in server.py. */
@@ -230,9 +230,14 @@ final class Api {
         return b.get((int) idx);
     }
 
+    /** A cache key that is different for every (book, chapter) pair. */
+    private static Long chapterKey(long book, long ch) {
+        return (book << 32) ^ (ch & 0xFFFFFFFFL);
+    }
+
     /** Hebrew words, Cornilescu text and the links between them, one row per verse. */
     List<Object> chapter(long book, long ch) {
-        Long key = book * 1000 + ch;
+        Long key = chapterKey(book, ch);
         synchronized (chapterCache) {
             List<Object> c = chapterCache.get(key);
             if (c != null) return c;
@@ -274,7 +279,7 @@ final class Api {
     /** KJV for a chapter: {verse id: [text, token offsets, links, italic token indexes]}. */
     Map<Long, List<Object>> enChapter(long book, long ch) {
         if (!hasKjv()) return Collections.emptyMap();
-        Long key = book * 1000 + ch;
+        Long key = chapterKey(book, ch);
         synchronized (enCache) {
             Map<Long, List<Object>> c = enCache.get(key);
             if (c != null) return c;
@@ -664,41 +669,48 @@ final class Api {
         String key; long freq; String gloss, translit, ro, glossRo;
     }
 
-    private List<LemmaText> lemmaTexts;
-    private List<long[]> verseIds;
-    private List<String> verseTexts;
+    private volatile List<LemmaText> lemmaTexts;
+    private volatile List<long[]> verseIds;
+    private volatile List<String> verseTexts;
+    // The search lists take a moment to build. They have their own lock, so the first search doesn't hold up
+    // books(), meta() and the other tables nearly every request needs (they lock the Api itself).
+    private final Object searchLock = new Object();
 
-    private synchronized List<LemmaText> lemmaTexts() {
-        if (lemmaTexts == null) {
-            Set<String> cols = lemmaColumns();
-            String sql = "SELECT key, freq, gloss, translit, " + (cols.contains("ro") ? "ro" : "NULL") + ", "
-                + (cols.contains("gloss_ro") ? "gloss_ro" : "NULL") + " FROM lemmas WHERE freq>0 ORDER BY rowid";
-            List<LemmaText> out = new ArrayList<LemmaText>();
-            for (Object[] r : q(sql)) {
-                LemmaText t = new LemmaText();
-                t.key = (String) r[0];
-                t.freq = asLong(r[1]);
-                t.gloss = r[2] == null ? null : asciiLower((String) r[2]);
-                t.translit = r[3] == null ? null : asciiLower(((String) r[3]).replace(".", "").replace("'", ""));
-                t.ro = cols.contains("ro") ? asciiLower(stripAccents((String) r[4])) : null;
-                t.glossRo = cols.contains("gloss_ro") ? asciiLower(stripAccents((String) r[5])) : null;
-                out.add(t);
+    private List<LemmaText> lemmaTexts() {
+        synchronized (searchLock) {
+            if (lemmaTexts == null) {
+                Set<String> cols = lemmaColumns();
+                String sql = "SELECT key, freq, gloss, translit, " + (cols.contains("ro") ? "ro" : "NULL") + ", "
+                    + (cols.contains("gloss_ro") ? "gloss_ro" : "NULL") + " FROM lemmas WHERE freq>0 ORDER BY rowid";
+                List<LemmaText> out = new ArrayList<LemmaText>();
+                for (Object[] r : q(sql)) {
+                    LemmaText t = new LemmaText();
+                    t.key = (String) r[0];
+                    t.freq = asLong(r[1]);
+                    t.gloss = r[2] == null ? null : asciiLower((String) r[2]);
+                    t.translit = r[3] == null ? null : asciiLower(((String) r[3]).replace(".", "").replace("'", ""));
+                    t.ro = cols.contains("ro") ? asciiLower(stripAccents((String) r[4])) : null;
+                    t.glossRo = cols.contains("gloss_ro") ? asciiLower(stripAccents((String) r[5])) : null;
+                    out.add(t);
+                }
+                lemmaTexts = out;
             }
-            lemmaTexts = out;
+            return lemmaTexts;
         }
-        return lemmaTexts;
     }
 
-    private synchronized void loadVerseTexts() {
-        if (verseIds != null) return;
-        List<long[]> ids = new ArrayList<long[]>();
-        List<String> texts = new ArrayList<String>();
-        for (Object[] r : q("SELECT id, book, ch, v, ro FROM verses ORDER BY id")) {
-            ids.add(new long[]{asLong(r[0]), asLong(r[1]), asLong(r[2]), asLong(r[3])});
-            texts.add(asciiLower(stripAccents((String) r[4])));
+    private void loadVerseTexts() {
+        synchronized (searchLock) {
+            if (verseIds != null) return;
+            List<long[]> ids = new ArrayList<long[]>();
+            List<String> texts = new ArrayList<String>();
+            for (Object[] r : q("SELECT id, book, ch, v, ro FROM verses ORDER BY id")) {
+                ids.add(new long[]{asLong(r[0]), asLong(r[1]), asLong(r[2]), asLong(r[3])});
+                texts.add(asciiLower(stripAccents((String) r[4])));
+            }
+            verseTexts = texts;
+            verseIds = ids;
         }
-        verseTexts = texts;
-        verseIds = ids;
     }
 
     private static final Comparator<Map<String, Object>> BY_FREQ = new Comparator<Map<String, Object>>() {
@@ -820,13 +832,55 @@ final class Api {
         return morphCodes;
     }
 
+    private volatile Assets lessonSource;
+    private Set<String> lessonPatterns;
+    private final Object lessonLock = new Object();
+
+    /** Where the grammar lessons are read from (the web/ files), for the patterns morphsearch accepts. */
+    void setLessonSource(Assets assets) { lessonSource = assets; }
+
+    private static final Pattern LESSON_FILE = Pattern.compile("from \"\\./([a-z0-9_-]+\\.js)\"");
+    private static final Pattern LESSON_SEARCH = Pattern.compile("\\bsearch:\\s*\"([^\"\\\\]+)\"");
+
+    /**
+     * The grammar-code patterns the lessons use (the search: "..." lines in web/js/lessons). Only these are run, like
+     * lesson_patterns() in server.py: a pattern like (.*)*x would keep a server thread busy for minutes.
+     */
+    private Set<String> lessonPatterns() {
+        synchronized (lessonLock) {
+            if (lessonPatterns == null) {
+                Set<String> found = new HashSet<String>();
+                Assets a = lessonSource;
+                byte[] index = a == null ? null : a.read("js/lessons/index.js");
+                if (index != null) {
+                    Matcher f = LESSON_FILE.matcher(utf8(index));
+                    while (f.find()) {
+                        byte[] lesson = a.read("js/lessons/" + f.group(1));
+                        if (lesson == null) continue;
+                        Matcher m = LESSON_SEARCH.matcher(utf8(lesson));
+                        while (m.find()) found.add(m.group(1));
+                    }
+                }
+                lessonPatterns = found;
+            }
+            return lessonPatterns;
+        }
+    }
+
+    private static String utf8(byte[] b) {
+        try {
+            return new String(b, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private Result apiMorphsearch(Map<String, String> q) {
         String pattern = q.get("re") == null ? "" : q.get("re");
         long lim = num(q, "limit", 12, 1, 60);
         String book = q.get("book");
         String ver = version(q);
-        // the app only sends short fixed patterns; a cap keeps a pathological one from tying up the server
-        if (pattern.isEmpty() || pattern.length() > 120) return new Result(400, Json.obj("error", "bad pattern"));
+        if (!lessonPatterns().contains(pattern)) return new Result(400, Json.obj("error", "bad pattern"));
         Pattern rx;
         try {
             rx = Pattern.compile(pattern);
@@ -1038,27 +1092,28 @@ final class Api {
     static final int RESTORE_POINTS_KEPT = 10;
     static final int DAILY_BACKUPS_KEPT = 14;
 
-    /** The saved progress as JSON text; a damaged file is put aside and an empty object returned. */
-    String readUserdataText() {
+    /**
+     * The saved progress as JSON text; a damaged file is moved aside once and an empty object returned. A file that
+     * can't be read right now throws (an error for the page), never "{}": a save made from that empty start would
+     * replace the real file.
+     */
+    String readUserdataText() throws IOException {
         synchronized (saveLock) {
             if (!userFile.exists()) return "{}";
+            String text = readText(userFile);
             try {
-                String text = readText(userFile);
                 Json.parse(text);
                 return text;
-            } catch (IOException e) {
-                return "{}";
             } catch (RuntimeException e) {
-                try {
-                    copyFile(userFile, new File(userFile.getPath() + ".broken-" + stamp("yyyyMMdd-HHmmss")));
-                } catch (IOException ignored) { /* nothing more to do */ }
+                File broken = new File(userFile.getPath() + ".broken-" + stamp("yyyyMMdd-HHmmss"));
+                if (!userFile.renameTo(broken)) copyFile(userFile, broken); // renaming keeps it from being copied on every load
                 return "{}";
             }
         }
     }
 
     /** Revision stored in userdata.json. Every save bumps it, so a window with old data can't overwrite newer progress. */
-    private long currentRev() {
+    private long currentRev() throws IOException {
         if (!userFile.exists()) return 0;
         long t = userFile.lastModified(), s = userFile.length();
         if (t == revStatTime && s == revStatSize) return revCached;
@@ -1069,11 +1124,10 @@ final class Api {
                 Object r = M(o).get("_rev");
                 if (r instanceof Long && (Long) r >= 0) rev = (Long) r;
             }
-        } catch (IOException e) {
-            rev = 0;
         } catch (RuntimeException e) {
-            rev = 0;
+            rev = 0; // damaged: a save may replace it (the daily backup keeps the old file)
         }
+        // an IOException goes to the caller: the save fails instead of replacing a file it couldn't read
         revStatTime = t;
         revStatSize = s;
         revCached = rev;

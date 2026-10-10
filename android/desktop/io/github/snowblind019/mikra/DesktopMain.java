@@ -31,7 +31,9 @@ public final class DesktopMain {
             public String prefetchRefusal() { return "edge-tts is not installed"; }
         };
         Api api = new Api(new JdbcDb(new File(root, "data/mikra.db").getPath()), none, data, a.containsKey("--platform") ? a.get("--platform") : "Linux");
-        Http http = new Http(api, new Http.FolderAssets(new File(root, "web")), a.get("--key"), false);
+        Http.FolderAssets web = new Http.FolderAssets(new File(root, "web"));
+        api.setLessonSource(web);
+        Http http = new Http(api, web, a.get("--key"), false);
         http.debug = true;
         int p = http.start(port, 1);
         System.out.println("Mikra (Java) is running at http://localhost:" + p + "/");

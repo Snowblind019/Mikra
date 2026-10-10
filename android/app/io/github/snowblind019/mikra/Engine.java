@@ -51,7 +51,11 @@ final class Engine {
         StringBuilder b = new StringBuilder();
         for (byte x : r) b.append(String.format("%02x", x & 0xff));
         token = b.toString();
+        api.setLessonSource(assets);
         Http h = new Http(api, assets, token, true);
+        h.errorLog = new Http.ErrorLog() {
+            @Override public void error(String what, Throwable e) { android.util.Log.w("Mikra", what, e); }
+        };
         port = h.start(PREFERRED_PORT, 20);
         http = h;
     }

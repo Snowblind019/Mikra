@@ -2,7 +2,7 @@
 
 import { api, store, errText } from "./store.js";
 import { ctx } from "./ctx.js";
-import { h, clear, icon, iconBtn, toast, modal, fmtInt, relDays, he, heText, heClass, today, trt } from "./ui.js";
+import { h, clear, icon, iconBtn, toast, modal, fmtInt, relDays, he, heText, heClass, dateKey, trt } from "./ui.js";
 import { tr, trn, lang, bible, bibleName, meaning, cursive } from "./i18n.js";
 import { translit, lemmaTranslit, stripCantillation, stripPoints, consonants, unpack, speakableText, speakableLemma, shortParse } from "./hebrew.js";
 import { speak } from "./audio.js";
@@ -303,7 +303,7 @@ function exportCsv() {
 }
 
 function exportJson() {
-  download(`mikra-backup-${today()}.json`, JSON.stringify(store.data, null, 1), "application/json");
+  download(`mikra-backup-${dateKey(new Date())}.json`, JSON.stringify(store.data, null, 1), "application/json");
 }
 
 function importJson() {

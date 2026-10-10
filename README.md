@@ -12,7 +12,7 @@ Hover a word on either side and its match lights up on the other side. Click a H
 - how the KJV and Cornilescu translate it
 - every verse it appears in
 
-Learn with flashcards (spaced repetition), ready-made word decks, practice games, the alphabet in print and handwriting, typing practice, 19 grammar lessons, and saved verses you learn by heart.
+Learn with flashcards (spaced repetition), ready-made word decks, practice games, the alphabet in print and handwriting, typing practice, a 64-lesson grammar course, and saved verses you learn by heart.
 
 The whole app works in **English or Romanian**. Switch in Settings or from the top bar.
 
@@ -42,7 +42,7 @@ To put an icon on the desktop: double-click `Create Desktop Shortcut.bat`.
 
 ### WSL
 
-Run `./run.sh` inside WSL. The app opens in Microsoft Edge on the Windows side. If no window appears, open the address the terminal prints (normally http://localhost:8723) in any Windows browser.
+Run `./run.sh` inside WSL. The app opens in Microsoft Edge on the Windows side. If no window appears, open the link the terminal prints (it starts with http://localhost:8723/__start) in any Windows browser.
 
 ### The window
 
@@ -57,9 +57,11 @@ Options:
 
 The app only answers requests from this computer and from its own page. Other websites open in the same browser can't read or change your progress.
 
+Your progress also needs a key, which the browser keeps as a cookie. The launcher opens the window with a one-time start link that gets it the key, and the terminal prints a link with the key itself (`http://localhost:8723/__start?t=...`) for opening Mikra by hand. Other programs and other user accounts on the computer can reach the app's address too, but without the key they only get its public files, never your progress. If a browser shows "Open Mikra from its shortcut", start Mikra with its shortcut or `run.sh` / `run.bat`, or open the link the terminal printed.
+
 ## Android
 
-The Android app is the same app in a phone window: same tabs, same data format, same backups. It needs Android 7 or newer and works fully offline.
+The Android app is the same app in a phone window: same tabs, same data format, same backups. It needs Android 7 or newer and works offline. The one exception is the Hebrew voice: Mikra prefers a voice installed on the phone, but if the only Hebrew voice is an online one, the words it reads aloud go to that voice's service.
 
 ### Installing
 
@@ -138,6 +140,7 @@ Romanian meanings: the 1,000 most common words have meanings written by hand. Ev
 
 **Review:**
 - Flashcards scheduled with FSRS spaced repetition (Again, Hard, Good, Easy). Click the card to see the answer.
+- A study day runs from 4 a.m. to 4 a.m., as in Anki. A session that goes past midnight still counts as that evening, and cards you grade late in the evening come back the next day, not a few minutes later.
 - **Word decks** to add many words at once. New cards come in a few each day (Settings, Review). The decks:
   - the 100, 500, 1,000 and 2,000 most common words
   - every word used 10+ times
@@ -158,7 +161,15 @@ Romanian meanings: the 1,000 most common words have meanings written by hand. Ev
 - **Keyboard**: the Israeli layout and a typing drill
 - drills, including print versus cursive
 
-**Grammar:** 19 short lessons, from reading a verse step by step and the little prefixes to verb stems, numbers, the story tense and verb charts. Each lesson can pull random real examples from any book.
+**Grammar:** a course of 64 lessons in six parts, from beginner to advanced:
+- *Getting started:* how a word is built, reading a verse step by step, the vowel signs, shva and dagesh, the prefixes, the article, the object marker, the small words you see everywhere.
+- *Nouns and the words around them:* gender and number, noun patterns, how nouns change with endings, the construct chain, pronoun endings, adjectives, pronouns, demonstratives, prepositions, numbers, questions, negation.
+- *The verb:* stems, perfect and imperfect, wayyiqtol, weqatal, commands and wishes, infinitives and participles, object endings, stative verbs, then Niphal, Piel and Pual, Hiphil and Hophal, Hithpael and the rare stems, each in its own lesson, and full charts for every stem.
+- *Weak verbs:* gutturals, verbs ending in א, starting with נ or י, hollow verbs, verbs ending in ה, doubled verbs, and a table of the 25 most common verbs with their real forms.
+- *Building sentences:* verbless sentences, word order, אֲשֶׁר, the many jobs of כִּי, “to have”, time expressions, the infinitive and the participle in use, conditions, purpose, oaths and emphasis, direct speech, the directional ending.
+- *Reading the text:* accents, pausal forms, poetry, the Divine Name and Ketiv/Qere, Aramaic, a first look at Aramaic grammar, and a one-page summary of all prefixes and endings.
+
+Every lesson is written in both languages and quotes real verses, each with its KJV or Cornilescu rendering and a link into the reader. Most lessons end with “Find it in the Bible”, which pulls random verses that use the form just taught, from any book you choose. Lessons you mark as done are remembered.
 
 **Progress:**
 - how much of the Old Testament is made of words you know
@@ -173,9 +184,9 @@ Romanian meanings: the 1,000 most common words have meanings written by hand. Ev
 
 ## Audio
 
-Pronunciation uses Microsoft's free neural Hebrew voices through the `edge-tts` package. The run scripts try to install it the first time. If that fails, install it yourself and restart:
-- Linux / WSL: `pip install --user edge-tts`
-- Windows: `py -m pip install edge-tts`
+Pronunciation uses Microsoft's free neural Hebrew voices through the `edge-tts` package. The run scripts install it the first time, at a fixed version (7.2.8, set at the top of the audio part of `run.sh` and `run.bat`), so a new release is never installed before it has been tried. If Microsoft changes its service and audio stops working, raise that version and delete the `.venv` folder. If the setup fails, for example without internet, it is tried again the next day. To install it yourself and restart:
+- Linux / WSL: `pip install --user edge-tts==7.2.8` (on Ubuntu and WSL, `sudo apt install python3-venv` lets `run.sh` install it in its own folder instead)
+- Windows: `py -m pip install edge-tts==7.2.8`
 
 Each word is downloaded the first time it is played and then kept on your computer. To skip the wait, go to **Settings, Audio, Download audio ahead of time** and download everything at once. It runs in the background. The choices:
 - all dictionary words (about 8,000 clips)
@@ -195,7 +206,7 @@ Cards, notes, known words, saved verses, link fixes and settings are saved in on
 - Windows: `%APPDATA%\Mikra\userdata.json`
 - Android: inside the app (see [Your progress on the phone](#your-progress-on-the-phone))
 
-A copy is kept each day in the `backups` folder next to it (last 14 days). Before a backup is restored or all progress is deleted, one more copy is saved there as `restore-point-<date>-<time>.json` (the last 10 are kept). My words has backup and restore buttons too. Downloaded audio is in `audio-cache` in the same folder. Progress saved under the old name (Hebrew Reader) is moved over the first time Mikra starts.
+A copy is kept each day in the `backups` folder next to it (last 14 days). Before a backup is restored or all progress is deleted, one more copy is saved there as `restore-point-<date>-<time>.json` (the last 10 are kept). My words has backup and restore buttons too. Downloaded audio is in `audio-cache` in the same folder, and `server-key` holds the key of the start link (only you can read it; delete it to make a new one). Progress saved under the old name (Hebrew Reader) is moved over the first time Mikra starts.
 
 If the app is open in two windows, only the one that saved last keeps saving. The other one shows a message and asks you to reload, so it can't overwrite newer progress with older data.
 

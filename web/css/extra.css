@@ -118,6 +118,15 @@
 .gr-quote { margin: 8px 0 14px; padding: 8px 14px; border-left: 3px solid var(--lapis); background: var(--surface); border-radius: 0 8px 8px 0; font-size: 15.5px; }
 .gr-steps li { margin: 6px 0; }
 .lesson-list button.done .n { color: var(--green); }
+.lesson-list { max-height: calc(100vh - 32px); overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+@media (max-width: 1150px) { .lesson-list { max-height: none; overflow: visible; } .lesson-list .lesson-part { width: 100%; } }
+.lesson-list .lesson-part { font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); margin: 14px 10px 4px; }
+.lesson-list .lesson-part:first-of-type { margin-top: 6px; }
+.lesson-list .lesson-progress { margin: 0 10px 4px; }
+.lesson-where { margin-bottom: 6px; }
+.lesson .ex + .ex { margin-top: 6px; }
+.lesson .gr-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 760px) { .lesson .gr-pair { grid-template-columns: 1fr; } }
 
 /* alphabet */
 .letter .glyph-pair { grid-row: 1 / span 3; grid-column: 2; display: flex; flex-direction: column; align-items: center; }

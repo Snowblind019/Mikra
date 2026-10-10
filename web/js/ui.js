@@ -1,6 +1,7 @@
 // Small DOM helpers shared by every view.
 import { tr, fmtNum, fmtDec, cursive } from "./i18n.js";
 import { stripPoints } from "./hebrew.js";
+import { studyDate } from "./fsrs.js";
 
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -191,7 +192,11 @@ export function relDays(ts) {
   return fmtDec(d / 365, 1) + tr(" y", " ani");
 }
 
-export function today() {
-  const d = new Date();
+export function dateKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Today's key in the daily stats. The study day starts at 4 a.m., like the review schedule (see fsrs.js).
+export function today() {
+  return dateKey(studyDate());
 }

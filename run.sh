@@ -23,19 +23,31 @@ PY="$(find_python)" || {
 }
 
 # Pronunciation audio uses edge-tts. It is optional; we try to set it up once in a private folder (.venv).
+# The version is pinned, so a new release is never installed before it has been tried. To move to a newer one,
+# change it here and delete the .venv folder.
+EDGE_TTS="edge-tts==7.2.8"
+# a setup that failed (no internet, say) is tried again a day later
+find . -maxdepth 1 -name .tts-setup-tried -mtime +0 -exec rm -f {} + 2>/dev/null
 if [ -x ".venv/bin/python" ]; then
   PY=".venv/bin/python"
 elif ! "$PY" -c "import edge_tts" >/dev/null 2>&1 && [ ! -f ".tts-setup-tried" ]; then
   echo "Setting up pronunciation audio (one time, needs internet)..."
   touch .tts-setup-tried
-  if "$PY" -m venv .venv >/dev/null 2>&1 && .venv/bin/python -m pip install --quiet --disable-pip-version-check edge-tts; then
+  PIPOPTS="--quiet --disable-pip-version-check --timeout 15 --retries 1"
+  if "$PY" -m venv .venv >/dev/null 2>&1 && .venv/bin/python -m pip install $PIPOPTS "$EDGE_TTS"; then
     PY=".venv/bin/python"
+    rm -f .tts-setup-tried
     echo "Audio is ready."
   else
     rm -rf .venv
-    "$PY" -m pip install --user --quiet edge-tts >/dev/null 2>&1 \
-      || "$PY" -m pip install --user --quiet --break-system-packages edge-tts >/dev/null 2>&1 \
-      || echo "Could not install edge-tts. The app works without it; audio will use your browser's voice if it has Hebrew. See README.md."
+    if "$PY" -m pip install --user $PIPOPTS "$EDGE_TTS" >/dev/null 2>&1; then
+      rm -f .tts-setup-tried
+      echo "Audio is ready."
+    else
+      echo "Could not set up audio. The app works without it (your browser's Hebrew voice is used if it has one)."
+      echo "It will be tried again tomorrow. On Ubuntu and WSL it may need: sudo apt install python3-venv"
+      echo "See README.md for more."
+    fi
   fi
 fi
 

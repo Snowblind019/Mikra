@@ -3,6 +3,7 @@ package io.github.snowblind019.mikra;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -135,11 +136,13 @@ final class Json {
                         case 't': b.append('\t'); break;
                         case 'u':
                             if (i + 4 > s.length()) throw err("bad \\u escape");
-                            try {
-                                b.append((char) Integer.parseInt(s.substring(i, i + 4), 16));
-                            } catch (NumberFormatException ex) {
-                                throw err("bad \\u escape");
+                            int u = 0;
+                            for (int k = i; k < i + 4; k++) { // exactly four hex digits (parseInt would also take "+041")
+                                int d = Character.digit(s.charAt(k), 16);
+                                if (d < 0 || s.charAt(k) > 'f') throw err("bad \\u escape");
+                                u = u * 16 + d;
                             }
+                            b.append((char) u);
                             i += 4;
                             break;
                         default: throw err("bad escape");
@@ -263,6 +266,12 @@ final class Json {
                         b.append("\\u00");
                         b.append(Character.forDigit((c >> 4) & 15, 16));
                         b.append(Character.forDigit(c & 15, 16));
+                    } else if (Character.isHighSurrogate(c) && i + 1 < n && Character.isLowSurrogate(s.charAt(i + 1))) {
+                        b.append(c).append(s.charAt(++i)); // a whole emoji or other character outside the BMP
+                    } else if (Character.isSurrogate(c)) {
+                        // half a pair (a note cut in the middle of an emoji, say): UTF-8 can't hold it and would
+                        // save "?", so write it as an escape; JSON.parse in the page gives back the same text
+                        b.append("\\u").append(String.format(Locale.ROOT, "%04x", (int) c));
                     } else {
                         b.append(c);
                     }

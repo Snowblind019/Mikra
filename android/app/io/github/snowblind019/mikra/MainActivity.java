@@ -281,6 +281,7 @@ public final class MainActivity extends Activity {
             if (result != RESULT_OK || data == null || data.getData() == null || text == null) return;
             try {
                 OutputStream out = getContentResolver().openOutputStream(data.getData());
+                if (out == null) throw new java.io.IOException("the phone could not open the file");
                 try {
                     out.write(text.getBytes("UTF-8"));
                 } finally {
@@ -312,11 +313,18 @@ public final class MainActivity extends Activity {
                     v.put("is_pending", 1);
                     Uri uri = cr.insert(coll, v);
                     if (uri == null) return "error:the phone refused to create the file";
-                    OutputStream out = cr.openOutputStream(uri);
                     try {
-                        out.write(text.getBytes("UTF-8"));
-                    } finally {
-                        out.close();
+                        OutputStream out = cr.openOutputStream(uri);
+                        if (out == null) throw new java.io.IOException("the phone could not open the file");
+                        try {
+                            out.write(text.getBytes("UTF-8"));
+                        } finally {
+                            out.close();
+                        }
+                    } catch (Exception e) {
+                        // don't leave an empty, half-made file behind in Downloads
+                        try { cr.delete(uri, null, null); } catch (RuntimeException ignored) { /* nothing more to do */ }
+                        throw e;
                     }
                     ContentValues done = new ContentValues();
                     done.put("is_pending", 0);

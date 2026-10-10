@@ -4,6 +4,7 @@ import { api, store, errText, dayStreak } from "./store.js";
 import { ctx } from "./ctx.js";
 import { h, clear, icon, fmtInt, pct, fmtPct, today, heText, heClass, trt } from "./ui.js";
 import { tr, trn, roDe, L, meaning } from "./i18n.js";
+import { studyDate } from "./fsrs.js";
 
 let root;
 let openBooks = new Set([0]);
@@ -182,7 +183,7 @@ function weekStrip() {
   const goalMin = store.settings.goalMinutes || 0;
   const goalRev = store.settings.goalReviews || 0;
   const days = [];
-  const d = new Date();
+  const d = studyDate();
   d.setDate(d.getDate() - 6);
   const names = tr("Sun Mon Tue Wed Thu Fri Sat", "Dum Lun Mar Mie Joi Vin Sâm").split(" ");
   for (let i = 0; i < 7; i++) {
@@ -208,7 +209,7 @@ function weekStrip() {
 
 function reviewChart() {
   const days = [];
-  const d = new Date();
+  const d = studyDate();
   d.setDate(d.getDate() - 29);
   for (let i = 0; i < 30; i++) {
     const k = dayKey(d);

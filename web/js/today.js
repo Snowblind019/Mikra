@@ -6,7 +6,7 @@ import { h, clear, icon, iconBtn, heBig, toast, fmtInt, today, pct } from "./ui.
 import { tr, trn, times, roDe, lang, meaning } from "./i18n.js";
 import { translit, lemmaTranslit, speakableLemma } from "./hebrew.js";
 import { speak } from "./audio.js";
-import { isDue } from "./fsrs.js";
+import { isDue, studyDate } from "./fsrs.js";
 
 let root;
 let seq = 0;
@@ -110,7 +110,7 @@ function fillWord(box, items) {
   const known = store.knownKeys();
   const cand = items.filter(x => !/^H9/.test(x.key) && !known.has(x.key) && !store.hasCard("L:" + x.key) && meaning(x));
   if (!cand.length) { box.append(h("p", { class: "muted" }, tr("You know all the common words. Well done!", "Știi toate cuvintele des întâlnite. Bravo!"))); return; }
-  const d = new Date();
+  const d = studyDate();
   const pick = cand[(d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) % Math.min(cand.length, 40)];
   const s = store.settings;
   const say = () => speak(speakableLemma(pick.hebrew, pick.key, s));
@@ -167,7 +167,7 @@ function guidedPath() {
   const steps = [
     [!!d.path.letters, tr("Learn the 22 letters", "Învață cele 22 de litere"), tr("Alphabet, then the letter drills (20 answers, 80% right).", "Alfabetul, apoi exercițiile cu litere (20 de răspunsuri, 80% corecte)."), () => ctx.navigate("alphabet", { sub: "letters" })],
     [!!d.path.vowels, tr("Learn the vowels", "Învață vocalele"), tr("Alphabet, Vowels, then the vowel reading drill.", "Alfabet, Vocale, apoi exercițiul Citirea vocalelor."), () => ctx.navigate("alphabet", { sub: "vowels" })],
-    [!!d.path["grammar:0"], tr("How a Hebrew word is built", "Cum e alcătuit un cuvânt ebraic"), tr("The first grammar lesson: prefixes, root, endings.", "Prima lecție de gramatică: prefixe, rădăcină, terminații."), () => ctx.navigate("grammar", { lesson: 0 })],
+    [!!(d.path["grammar:word-built"] || d.path["grammar:0"]), tr("How a Hebrew word is built", "Cum e alcătuit un cuvânt ebraic"), tr("The first grammar lesson: prefixes, root, endings.", "Prima lecție de gramatică: prefixe, rădăcină, terminații."), () => ctx.navigate("grammar", { lesson: "word-built" })],
     [Object.keys(d.cards).length >= 20, tr("Add your first word deck", "Adaugă primul pachet de cuvinte"), tr("Review, Word decks: start with the 100 most common words.", "Recapitulare, Pachete de cuvinte: începe cu cele mai folosite 100 de cuvinte."), () => ctx.navigate("review")],
     [totalReviews > 0, tr("Do your first review", "Fă prima recapitulare"), tr("A few minutes of flashcards every day is the secret.", "Câteva minute de cartonașe pe zi, acesta e secretul."), () => ctx.navigate("review")],
     [!!d.read["0.1"], tr("Read Genesis 1 with help", "Citește Geneza 1 cu ajutor"), tr("Turn on pronunciation and meaning under the words (View), then mark the chapter as read.", "Pornește pronunția și înțelesul sub cuvinte (Afișare), apoi marchează capitolul ca citit."), () => ctx.navigate("read", { b: 0, c: 1 })],

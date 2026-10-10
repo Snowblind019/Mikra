@@ -166,8 +166,8 @@ function render() {
     h("p", null, h("b", null, tr("Browser voices for Hebrew: ", "Voci ebraice în browser: ")), voices.length ? voices.map(v => v.name).join(", ") : tr("none found", "niciuna")),
     !tts.ok ? h("div", { class: "tip", style: { borderLeft: "3px solid var(--gold)", padding: "8px 14px", background: "var(--surface)" } },
       h("div", null, tr("For natural Hebrew audio, install edge-tts once, then restart the app:", "Pentru o pronunție naturală, instalează o dată edge-tts, apoi repornește aplicația:")),
-      h("div", { style: { margin: "6px 0" } }, h("b", null, "Linux / WSL: "), h("code", { class: "path" }, "pip install --user edge-tts")),
-      h("div", null, h("b", null, "Windows: "), h("code", { class: "path" }, "py -m pip install edge-tts")),
+      h("div", { style: { margin: "6px 0" } }, h("b", null, "Linux / WSL: "), h("code", { class: "path" }, "pip install --user edge-tts==7.2.8")),
+      h("div", null, h("b", null, "Windows: "), h("code", { class: "path" }, "py -m pip install edge-tts==7.2.8")),
       h("div", { class: "small muted", style: { marginTop: "6px" } }, tr("The run scripts try to do this for you on first start. It uses Microsoft's free online voices.", "Fișierele de pornire (run.sh, run.bat) încearcă să facă asta singure prima dată. Folosește vocile online gratuite de la Microsoft."))) : null));
   page.append(audio);
   page.append(downloadBox(tts.ok));

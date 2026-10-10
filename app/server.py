@@ -12,11 +12,14 @@ Only the Python standard library is required. edge-tts is optional (pronunciatio
 import argparse
 import collections
 import functools
+import glob
+import hmac
 import ipaddress
 import json
 import os
 import platform
 import re
+import secrets
 import shutil
 import socket
 import sqlite3
@@ -26,6 +29,7 @@ import threading
 import time
 import traceback
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -36,7 +40,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(APP_DIR)
 WEB_DIR = os.path.realpath(os.path.join(ROOT, "web"))
 DB_PATH = os.path.join(ROOT, "data", "mikra.db")
-VERSION = "2.1.1"
+VERSION = "2.2.1"
 MAX_BODY = 64 * 1024 * 1024  # userdata.json is a few MB at most; anything bigger is a mistake
 
 # Sent with every response. The page only loads its own files, so other sites can't frame it,
@@ -95,6 +99,70 @@ USER_DIR = user_data_dir()
 USER_FILE = os.path.join(USER_DIR, "userdata.json")
 BACKUP_DIR = os.path.join(USER_DIR, "backups")
 AUDIO_DIR = os.path.join(USER_DIR, "audio-cache")
+KEY_FILE = os.path.join(USER_DIR, "server-key")
+
+# The API needs a secret cookie, like in the Android app. Other programs and other user accounts can reach
+# 127.0.0.1 too; without the key they only get the page's own files, never your progress. The key lives in your
+# user folder (readable only by you). The launcher opens the browser with a one-time start link, which /__start
+# swaps for the key as a cookie: a browser's command line can be read by other user accounts, so it never holds
+# the key itself. The link printed in the terminal has the key, for opening Mikra by hand.
+KEY = None
+
+
+def cookie_name(port):
+    # Browsers send a localhost cookie to every port, so each port gets its own name: two copies of Mikra with
+    # different data folders (different keys) don't overwrite each other's cookie.
+    return "mikra_key_%d" % port
+
+
+_start_lock = threading.Lock()
+_start_tokens = {}  # one-time start token -> time it expires
+
+
+def new_start_token():
+    t = secrets.token_hex(16)
+    now = time.time()
+    with _start_lock:
+        for k in [k for k, exp in _start_tokens.items() if exp < now]:
+            del _start_tokens[k]
+        _start_tokens[t] = now + 120
+    return t
+
+
+def use_start_token(t):
+    with _start_lock:
+        exp = _start_tokens.pop(t, None)  # one use only
+    return exp is not None and exp >= time.time()
+
+
+def key_proof(nonce):
+    return hmac.new(KEY.encode("ascii"), b"mikra-ping:" + nonce.encode("ascii"), "sha256").hexdigest()
+
+
+def load_key():
+    try:
+        with open(KEY_FILE, encoding="ascii") as fh:
+            k = fh.read().strip()
+        if re.fullmatch(r"[0-9a-f]{48}", k):
+            return k
+    except (OSError, ValueError):
+        pass
+    k = secrets.token_hex(24)
+    os.makedirs(USER_DIR, exist_ok=True)
+    tmp = KEY_FILE + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="ascii") as fh:
+        fh.write(k + "\n")
+    if os.name != "nt":
+        os.chmod(tmp, 0o600)  # in case an old .tmp file was left with other permissions
+    os.replace(tmp, KEY_FILE)
+    return k
+
+
+def start_url(port, token=None):
+    """The start link: with a one-time token for the browser's command line, with the key for the terminal."""
+    t = token or KEY
+    return "http://localhost:%d/__start?t=%s" % (port, t) if t else "http://localhost:%d/" % port
 
 
 # --------------------------------------------------------------------------- database
@@ -562,13 +630,34 @@ def _morph_codes():
     return []
 
 
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def json_text(obj):
+    """JSON for files and answers. A lone surrogate (half an emoji, from a note cut in the middle of one) can't be
+    written as UTF-8, so it is written as an escape; the page reads back the same text. Whole emoji are one
+    character in Python and are not touched."""
+    text = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    return _LONE_SURROGATE.sub(lambda m: "\\u%04x" % ord(m.group()), text)
+
+
+@functools.lru_cache(maxsize=1)
+def lesson_patterns():
+    """The grammar-code patterns the lessons use (the `search: "..."` lines in web/js/lessons). Only these are run:
+    Python's regex engine holds the whole server while it matches, so one pattern like (.*)*x could freeze the app."""
+    found = set()
+    for path in glob.glob(os.path.join(WEB_DIR, "js", "lessons", "*.js")):
+        with open(path, encoding="utf-8") as fh:
+            found.update(re.findall(r'\bsearch:\s*"([^"\\]+)"', fh.read()))
+    return frozenset(found)
+
+
 def api_morphsearch(q):
     pattern = q.get("re") or ""
     lim = num(q, "limit", 12, 1, 60)
     book = q.get("book")
     ver = version(q)
-    # The app only sends short fixed patterns; a cap keeps a pathological regex from tying up the server.
-    if not pattern or len(pattern) > 120:
+    if pattern not in lesson_patterns():
         return {"error": "bad pattern"}, 400
     try:
         rx = _compiled(pattern)
@@ -728,7 +817,7 @@ def api_audio_prefetch(q, body):
     divine = body.get("divineName") if body.get("divineName") in ("adonai", "yahweh", "as-written") else "adonai"
     rates = ["+0%"]
     slow = body.get("slowRate")
-    if body.get("slow") and isinstance(slow, str) and re.match(r"^[+-]\d{1,2}%$", slow):
+    if body.get("slow") and isinstance(slow, str) and re.fullmatch(r"[+-][0-9]{1,2}%", slow):
         rates.append(slow)
     book = 0
     if scope == "book":
@@ -802,6 +891,11 @@ def api_restore_point(q, body):
     return {"ok": True, "file": name}
 
 
+def api_start_token(q, body):
+    """A one-time start link for a second start of Mikra, which opens the browser on this running copy."""
+    return {"t": new_start_token()}
+
+
 def api_audio_clear(q, body):
     with _prefetch_lock:
         if _prefetch["running"]:
@@ -828,17 +922,24 @@ def api_tts(q):
 
 
 def read_userdata():
+    """The saved progress. A file that can't be read right now (too many open files, say) raises, so the page gets
+    an error instead of an empty start: a save made from that empty start would replace the real file."""
     try:
         with open(USER_FILE, encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
         return {}
-    except (OSError, ValueError):
-        # corrupt file: keep it aside, start clean
-        try:
-            shutil.copy2(USER_FILE, USER_FILE + ".broken-" + time.strftime("%Y%m%d-%H%M%S"))
-        except OSError:
-            pass
+    except ValueError:
+        # Damaged file: move it aside once and start clean. (Copying it left a new copy on every page load.)
+        with _save_lock:
+            try:
+                with open(USER_FILE, encoding="utf-8") as fh:
+                    return json.load(fh)  # a save replaced it in the meantime
+            except FileNotFoundError:
+                return {}
+            except ValueError:
+                pass
+            os.replace(USER_FILE, USER_FILE + ".broken-" + time.strftime("%Y%m%d-%H%M%S"))
         return {}
 
 
@@ -866,8 +967,11 @@ def current_rev():
         with open(USER_FILE, encoding="utf-8") as fh:
             rev = json.load(fh).get("_rev", 0)
         rev = rev if isinstance(rev, int) and rev >= 0 else 0
-    except (OSError, ValueError, AttributeError):
+    except FileNotFoundError:
         rev = 0
+    except (ValueError, AttributeError):
+        rev = 0  # damaged: a save may replace it (the daily backup keeps the old file)
+    # any other OSError: the save fails with an error instead of replacing a file it couldn't read
     _rev_cache.update(stat=st, rev=rev)
     return rev
 
@@ -894,11 +998,18 @@ def write_userdata(data):
                     pass
         data["_rev"] = rev + 1
         tmp = USER_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, separators=(",", ":"))
-            fh.flush()
-            os.fsync(fh.fileno())  # so a crash or power cut can't leave an empty file behind
-        os.replace(tmp, USER_FILE)
+        try:
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(json_text(data))
+                fh.flush()
+                os.fsync(fh.fileno())  # so a crash or power cut can't leave an empty file behind
+            os.replace(tmp, USER_FILE)
+        except BaseException:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
         _rev_cache.update(stat=_file_stat(), rev=rev + 1)
         return rev + 1, None
 
@@ -930,6 +1041,7 @@ POST_ROUTES = {
     "/api/audio/cancel": api_audio_cancel,
     "/api/audio/clear": api_audio_clear,
     "/api/restore_point": api_restore_point,
+    "/api/start_token": api_start_token,
 }
 
 MIME = {
@@ -976,7 +1088,7 @@ class Handler(BaseHTTPRequestHandler):
         super().end_headers()
 
     def _send_json(self, obj, status=200):
-        body = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        body = json_text(obj).encode("utf-8")
         gz = "gzip" in (self.headers.get("Accept-Encoding") or "") and len(body) > 4096
         if gz:
             import gzip
@@ -1029,6 +1141,40 @@ class Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host") or ""
         return bool(host) and origin == "http://" + host
 
+    def _key_ok(self):
+        if not KEY:
+            return True
+        want = cookie_name(self.server.server_address[1])
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            name, _, value = part.partition("=")
+            if name.strip() == want and hmac.compare_digest(value.strip().encode("utf-8"), KEY.encode("ascii")):
+                return True
+        return False
+
+    def _start(self, q):
+        # The launcher opens this address with a one-time token (or you open the printed link with the key); the
+        # window gets the key as a cookie the API checks from then on. A used or wrong token still goes to the
+        # app, which then explains how to open Mikra (a browser that restores its old tabs reopens this address).
+        t = q.get("t") or ""
+        ok = bool(KEY) and (hmac.compare_digest(t.encode("utf-8"), KEY.encode("ascii")) or use_start_token(t))
+        self.send_response(302)
+        self.send_header("Location", "/")
+        if ok:
+            self.send_header("Set-Cookie", "%s=%s; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict"
+                             % (cookie_name(self.server.server_address[1]), KEY))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _ping(self, q):
+        # A second start of Mikra asks whether this server has the same key, without sending the key: something
+        # else could be listening on the port. The answer proves the key without revealing it.
+        nonce = q.get("n") or ""
+        if not KEY or not re.fullmatch(r"[0-9a-f]{32}", nonce):
+            self.send_error(400)
+            return
+        self._send_json({"proof": key_proof(nonce)})
+
     def do_GET(self):
         if not self._host_ok():
             self.send_error(403)
@@ -1039,6 +1185,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(403)
             return
         q = {k: v[-1] for k, v in urllib.parse.parse_qs(url.query).items()}
+        if path == "/__start":
+            self._start(q)
+            return
+        if path == "/__ping":
+            self._ping(q)
+            return
+        if path.startswith("/api/") and not self._key_ok():
+            self._send_json({"error": "no key"}, 403)
+            return
         try:
             if path == "/api/userdata":
                 self._send_json(read_userdata())
@@ -1061,7 +1216,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             self._send_file(full)
-        except (KeyError, ValueError) as e:
+        except (KeyError, ValueError, OverflowError) as e:
             self._send_json({"error": "bad request: %s" % e}, 400)
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -1078,6 +1233,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._host_ok() or not self._same_origin():
             self.send_error(403)
+            return
+        if not self._key_ok():
+            self._send_json({"error": "no key"}, 403)
             return
         # Requiring JSON also means a cross-site page would need a CORS preflight, which this server never grants.
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -1116,7 +1274,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(res, status)
                 return
             self._send_json({"error": "unknown endpoint"}, 404)
-        except (ValueError, KeyError) as e:
+        except (ValueError, KeyError, OverflowError) as e:
             self._send_json({"error": "bad request: %s" % e}, 400)
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -1131,12 +1289,45 @@ class Handler(BaseHTTPRequestHandler):
 # --------------------------------------------------------------------------- browser launch
 
 def running_instance(port):
-    """True when Mikra is already serving on this port (for example the app was started twice)."""
+    """What already serves this port: "ours" (a Mikra that proved it has this data folder's key), "old" (a Mikra
+    from before 2.2.1, which has no key), or None (nothing, something else, or a Mikra with another data folder;
+    then this one starts on the next free port, since it saves to a different file). The key is never sent to a
+    server that hasn't proved it has it."""
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    nonce = secrets.token_hex(16)
     try:
-        with opener.open("http://127.0.0.1:%d/api/info" % port, timeout=1.5) as r:
-            return (r.headers.get("Server") or "").startswith(("Mikra/", "HebrewReader/"))
+        with opener.open("http://127.0.0.1:%d/__ping?n=%s" % (port, nonce), timeout=1.5) as r:
+            proof = json.loads(r.read(4096).decode("utf-8")).get("proof")
+        ok = KEY and isinstance(proof, str) and hmac.compare_digest(proof.encode("utf-8"), key_proof(nonce).encode("ascii"))
+        return "ours" if ok else None
+    except urllib.error.HTTPError as e:
+        server = e.headers.get("Server") or ""
+        if e.code == 404 and server.startswith(("Mikra/", "HebrewReader/")) and not takes_key(server):
+            return "old"
+        return None
     except Exception:
+        return None
+
+
+def running_start_token(port):
+    """A one-time start link from the running copy (it proved it has the key, so the key can be sent to it)."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    req = urllib.request.Request("http://127.0.0.1:%d/api/start_token" % port, data=b"{}", method="POST",
+                                 headers={"Content-Type": "application/json", "Cookie": "%s=%s" % (cookie_name(port), KEY)})
+    try:
+        with opener.open(req, timeout=1.5) as r:
+            t = json.loads(r.read(4096).decode("utf-8")).get("t")
+        return t if isinstance(t, str) and re.fullmatch(r"[0-9a-f]{32}", t) else None
+    except Exception:
+        return None
+
+
+def takes_key(server):
+    """Whether that Mikra knows /__start (2.2.1 and later)."""
+    try:
+        name, ver = server.split()[0].split("/", 1)
+        return name == "Mikra" and tuple(int(x) for x in ver.split(".")[:3]) >= (2, 2, 1)
+    except ValueError:
         return False
 
 
@@ -1223,12 +1414,19 @@ def main():
         print("Build it with:  python build/build_db.py")
         sys.exit(1)
     os.makedirs(USER_DIR, exist_ok=True)
-    if running_instance(args.port):
+    global KEY
+    KEY = load_key()
+    running = running_instance(args.port)
+    if running:
         # A second server would save to the same file as the first one; open the running copy instead.
-        url = "http://localhost:%d/" % args.port
-        print("Mikra is already running at %s" % url)
+        if running == "ours":
+            print("Mikra is already running. Open it at %s" % start_url(args.port))
+            launch = start_url(args.port, running_start_token(args.port) or KEY)
+        else:
+            launch = "http://localhost:%d/" % args.port
+            print("Mikra is already running. Open it at %s" % launch)
         if not args.no_browser:
-            open_app(url, args.window)
+            open_app(launch, args.window)
         return
     port = find_free_port(args.port, args.host)
     if not port:
@@ -1239,17 +1437,19 @@ def main():
         allow_reuse_address = os.name != "nt"  # on Windows this flag would let two servers share a port
 
     httpd = Server((args.host, port), Handler)
-    url = "http://localhost:%d/" % port
-    print("Mikra is running at %s" % url)
+    print("Mikra is running. Open it at %s" % start_url(port))
+    if not lesson_patterns():
+        print("Warning: no lesson patterns found in web/js/lessons, so \"Find it in the Bible\" in Grammar won't work.")
     if args.host not in ("127.0.0.1", "localhost"):
-        print("Warning: listening on %s. There is no password, so anyone who can reach this computer on the network"
-              " can read and change your progress." % args.host)
+        print("Warning: listening on %s. Other devices on your network can use Mikra with the link above (put this"
+              " computer's address in place of localhost). The connection is not encrypted, so only do this on a"
+              " network you trust." % args.host)
     print("Your progress is saved in %s" % USER_DIR)
     st = tts.status()
     print("Audio: %s" % st["message"])
     print("Press Ctrl+C to stop.")
     if not args.no_browser:
-        threading.Timer(0.6, open_app, args=(url, args.window)).start()
+        threading.Timer(0.6, open_app, args=(start_url(port, new_start_token()), args.window)).start()
     try:
         httpd.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:

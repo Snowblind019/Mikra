@@ -41,12 +41,32 @@ function forgetStability(d, s, r) {
   return Math.min(s, W[11] * Math.pow(d, -W[12]) * (Math.pow(s + 1, W[13]) - 1) * Math.exp((1 - r) * W[14]));
 }
 
-// Cards on whole-day intervals are due from the start of their day (as in Anki), so studying earlier in the day than
-// last time doesn't push them back a day. Learning steps (minutes) keep their exact time.
+// A study day runs from 4 a.m. to 4 a.m., as in Anki. With midnight as the boundary, a card graded at 23:50 with a
+// one-day interval came due ten minutes later (a wasted review that barely raised its stability), and a session that
+// ran past midnight got a second day's worth of new cards.
+export const DAY_START_HOURS = 4;
+
+// The study day a moment belongs to, as a Date whose calendar date is that day (before 4 a.m. it is still yesterday).
+export function studyDate(t = Date.now()) {
+  const d = new Date(t);
+  if (d.getHours() < DAY_START_HOURS) d.setDate(d.getDate() - 1);
+  return d;
+}
+
+// Cards on whole-day intervals are due from the start of their study day (as in Anki), so studying earlier in the day
+// than last time doesn't push them back a day. Learning steps (minutes) keep their exact time.
 export function dueAt(c) {
   if (c.state !== "review" || !Number.isFinite(c.due)) return c.due;
-  const d = new Date(c.due);
-  d.setHours(0, 0, 0, 0);
+  let d;
+  if (Number.isFinite(c.last) && c.due > c.last) {
+    // the interval counted in calendar days from the study day of the last review: counting 24-hour steps instead
+    // let a daylight-saving change move a card a day (one graded at 4:30 the day the clocks go back came due at once)
+    d = studyDate(c.last);
+    d.setDate(d.getDate() + Math.round((c.due - c.last) / DAY));
+  } else {
+    d = studyDate(c.due);
+  }
+  d.setHours(DAY_START_HOURS, 0, 0, 0);
   return d.getTime();
 }
 export function isDue(c, now = Date.now()) { return dueAt(c) <= now; }

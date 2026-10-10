@@ -204,10 +204,17 @@ async function init() {
     const page = document.createElement("div");
     page.className = "page";
     const h1 = document.createElement("h1");
-    h1.textContent = tr("The app server is not running", "Serverul aplicației nu rulează");
     const p = document.createElement("p");
-    p.textContent = tr("Start it again with run.sh (Linux, WSL) or run.bat (Windows), then reload this page.",
-      "Pornește-l din nou cu run.sh (Linux, WSL) sau run.bat (Windows), apoi reîncarcă pagina.");
+    if (/^no key$/i.test(String(e && e.message))) {
+      // the server is running, but this browser hasn't been given Mikra's key (see /__start in server.py)
+      h1.textContent = tr("Open Mikra from its shortcut", "Deschide Mikra din scurtătura ei");
+      p.textContent = tr("This browser window doesn't have Mikra's key yet. Start Mikra with its shortcut, run.sh or run.bat, or open the link it printed when it started.",
+        "Fereastra aceasta nu are încă cheia Mikra. Pornește Mikra din scurtătură, cu run.sh sau run.bat, sau deschide linkul afișat la pornire.");
+    } else {
+      h1.textContent = tr("The app server is not running", "Serverul aplicației nu rulează");
+      p.textContent = tr("Start it again with run.sh (Linux, WSL) or run.bat (Windows), then reload this page.",
+        "Pornește-l din nou cu run.sh (Linux, WSL) sau run.bat (Windows), apoi reîncarcă pagina.");
+    }
     page.append(h1, p);
     main.append(page);
     return;

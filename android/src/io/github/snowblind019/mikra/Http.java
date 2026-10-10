@@ -18,7 +18,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -60,9 +59,41 @@ final class Http {
     private ServerSocket server;
     private ThreadPoolExecutor pool;
     static final int MAX_CONNECTIONS = 24; // the page uses about 6 at a time
+    // Time limits. Another app on the phone can connect to 127.0.0.1 too; these keep it from holding connections open
+    // by sending a byte now and then (the old 15 s timeout started over with every byte).
+    static final int IDLE_MS = 5000;      // a kept-alive connection waiting for its next request
+    static final int HEADERS_MS = 10000;  // the request line and all headers, together
+    static final int BODY_MS = 60000;     // a request body (the app's own saves are a few MB at most)
+    private final LinkedHashMap<Socket, Conn> conns = new LinkedHashMap<Socket, Conn>(); // oldest first
     private volatile boolean closed;
     private int port;
     volatile boolean debug;
+
+    /** Where unexpected errors go (on the phone: logcat). Without one they are printed only when debug is on. */
+    interface ErrorLog {
+        void error(String what, Throwable e);
+    }
+
+    volatile ErrorLog errorLog;
+
+    private void report(String what, Throwable e) {
+        ErrorLog l = errorLog;
+        if (l != null) {
+            try { l.error(what, e); } catch (Throwable ignored) { /* logging must never fail a request */ }
+        } else if (debug) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * An open connection. trusted: it has sent the key cookie (the app's own window). busy: a complete request is
+     * being answered; otherwise it is idle or still arriving.
+     */
+    private static final class Conn {
+        final Socket socket;
+        volatile boolean trusted, busy;
+        Conn(Socket s) { socket = s; }
+    }
 
     Http(Api api, Assets assets, String token, boolean cacheStatic) {
         this.api = api;
@@ -92,8 +123,9 @@ final class Http {
         }
         if (server == null) throw last != null ? last : new IOException("no free port");
         port = server.getLocalPort();
-        // a bounded pool: a flood of connections (from another app, say) is turned away instead of using up memory
-        pool = new ThreadPoolExecutor(0, MAX_CONNECTIONS, 30, TimeUnit.SECONDS, new SynchronousQueue<Runnable>(), new ThreadFactory() {
+        // a bounded pool: a flood of connections (from another app, say) is turned away instead of using up memory.
+        // A few spare threads cover connections that were just closed to make room and are still finishing.
+        pool = new ThreadPoolExecutor(0, MAX_CONNECTIONS + 8, 30, TimeUnit.SECONDS, new SynchronousQueue<Runnable>(), new ThreadFactory() {
             @Override public Thread newThread(Runnable r) {
                 Thread t = new Thread(r, "mikra-http");
                 t.setDaemon(true);
@@ -112,6 +144,14 @@ final class Http {
         closed = true;
         try { if (server != null) server.close(); } catch (IOException ignored) { /* ignore */ }
         if (pool != null) pool.shutdownNow();
+        synchronized (conns) {
+            for (Conn c : conns.values()) closeQuietly(c.socket);
+            conns.clear();
+        }
+    }
+
+    private static void closeQuietly(Socket s) {
+        try { s.close(); } catch (IOException ignored) { /* ignore */ }
     }
 
     private void acceptLoop() {
@@ -126,16 +166,59 @@ final class Http {
                 if (closed) return;
                 continue;
             }
+            final Conn c = new Conn(s);
+            synchronized (conns) {
+                if (conns.size() >= MAX_CONNECTIONS) {
+                    // Full: make room. First the oldest connection that never sent the key, whatever it is doing
+                    // (another app can hold connections open by sending slowly, or by asking for files and never
+                    // reading the answers, which blocks the thread writing them). Then the oldest of the window's own
+                    // connections that is only waiting. Connections from another app can't lock the window out.
+                    Conn victim = null;
+                    for (Conn old : conns.values()) if (!old.trusted) { victim = old; break; }
+                    if (victim == null) for (Conn old : conns.values()) if (!old.busy) { victim = old; break; }
+                    if (victim != null) {
+                        conns.remove(victim.socket);
+                        closeQuietly(victim.socket); // also ends a write that is stuck
+                    }
+                }
+                if (conns.size() >= MAX_CONNECTIONS) {
+                    closeQuietly(s);
+                    continue;
+                }
+                conns.put(s, c);
+            }
             try {
                 pool.execute(new Runnable() {
-                    @Override public void run() { serve(s); }
+                    @Override public void run() { serve(c); }
                 });
-            } catch (RejectedExecutionException e) {
-                try { s.close(); } catch (IOException ignored) { /* ignore */ }
-            } catch (Throwable e) {
-                try { s.close(); } catch (IOException ignored) { /* ignore */ }
+            } catch (Throwable e) { // RejectedExecutionException: every thread is busy
+                synchronized (conns) { conns.remove(s); }
+                closeQuietly(s);
             }
         }
+    }
+
+    /** The socket's input, read no later than the current deadline allows (the socket timeout is set before each read). */
+    private static final class DeadlineInput extends java.io.FilterInputStream {
+        private final Socket socket;
+        private long deadline;
+
+        DeadlineInput(Socket s, InputStream in) {
+            super(in);
+            socket = s;
+        }
+
+        void within(long millis) { deadline = System.nanoTime() + millis * 1000000L; }
+
+        private void arm() throws IOException {
+            long left = (deadline - System.nanoTime()) / 1000000L;
+            if (left <= 0) throw new SocketTimeoutException("too slow");
+            socket.setSoTimeout((int) Math.min(Integer.MAX_VALUE, left));
+        }
+
+        @Override public int read() throws IOException { arm(); return super.read(); }
+
+        @Override public int read(byte[] b, int off, int len) throws IOException { arm(); return super.read(b, off, len); }
     }
 
     // ------------------------------------------------------------------ one connection
@@ -150,13 +233,20 @@ final class Http {
         Close() { super("bad request"); }
     }
 
-    private void serve(Socket s) {
+    private void serve(Conn conn) {
+        Socket s = conn.socket;
         try {
-            s.setSoTimeout(15000);
             s.setTcpNoDelay(true);
-            InputStream in = new BufferedInputStream(s.getInputStream(), 16384);
+            DeadlineInput din = new DeadlineInput(s, s.getInputStream());
+            InputStream in = new BufferedInputStream(din, 16384);
             OutputStream out = new BufferedOutputStream(s.getOutputStream(), 65536);
             while (!closed) {
+                conn.busy = false;
+                din.within(IDLE_MS);
+                in.mark(1);
+                if (in.read() < 0) break;
+                in.reset();
+                din.within(HEADERS_MS);
                 Request r;
                 try {
                     r = readRequest(in);
@@ -166,21 +256,25 @@ final class Http {
                     break;
                 }
                 if (r == null) break;
+                if (keyOk(r)) conn.trusted = true;
+                conn.busy = true;
+                din.within(BODY_MS);
                 boolean keep = handle(r, in, out);
                 out.flush();
                 if (!keep) break;
             }
         } catch (SocketTimeoutException e) {
-            // idle keep-alive connection
+            // idle keep-alive connection, or a client too slow to send its request
         } catch (SocketException e) {
-            // the page went away
+            // the page went away, or the connection was closed to make room
         } catch (IOException e) {
             if (debug) e.printStackTrace();
         } catch (Throwable e) {
             // never let one request take the whole app down (on Android an uncaught error ends the process)
-            if (debug) e.printStackTrace();
+            report("connection failed", e);
         } finally {
-            try { s.close(); } catch (IOException ignored) { /* ignore */ }
+            synchronized (conns) { conns.remove(s); }
+            closeQuietly(s);
         }
     }
 
@@ -270,16 +364,20 @@ final class Http {
         }
         String m = r.method;
         if (m.equals("GET")) {
-            if (length > 0) {
-                if (length > 1024 * 1024) { sendPlain(out, 413, false); return false; }
-                readBody(in, length);
+            if (length > 0) { // the app never sends one, and reading it would come before the key check
+                sendPlain(out, 400, false);
+                return false;
             }
             doGet(r, out, keep);
             return keep;
         }
         if (m.equals("POST") || m.equals("PUT")) {
-            if (!hostOk(r) || !sameOrigin(r) || !keyOk(r)) {
+            if (!hostOk(r) || !sameOrigin(r)) {
                 sendPlain(out, 403, false);
+                return false;
+            }
+            if (!keyOk(r)) { // the same answer as server.py, so the page can say how to get the key
+                sendJson(out, 403, Json.obj("error", "no key"), false);
                 return false;
             }
             // Requiring JSON also means a cross-site page would need a CORS preflight, which this server never grants.
@@ -315,7 +413,7 @@ final class Http {
         }
         boolean isApi = path.startsWith("/api/");
         if (isApi && !sameOrigin(r)) { sendPlain(out, 403, keep); return; }
-        if (isApi && !keyOk(r)) { sendPlain(out, 403, keep); return; }
+        if (isApi && !keyOk(r)) { sendJson(out, 403, Json.obj("error", "no key"), keep); return; }
         try {
             if (path.equals("/api/userdata")) {
                 sendJsonText(out, 200, api.readUserdataText(), keep);
@@ -340,9 +438,10 @@ final class Http {
         } catch (SocketException e) {
             throw e;
         } catch (Exception e) {
-            if (debug) e.printStackTrace();
+            report("GET " + r.path + " failed", e);
             sendJson(out, 500, Json.obj("error", "server error"), keep);
         } catch (OutOfMemoryError e) {
+            report("GET " + r.path + " ran out of memory", e);
             sendJson(out, 500, Json.obj("error", "out of memory"), false);
         }
     }
@@ -360,7 +459,7 @@ final class Http {
         } catch (SocketException e) {
             throw e;
         } catch (Exception e) {
-            if (debug) e.printStackTrace();
+            report(r.method + " " + r.path + " failed", e);
             sendJson(out, 500, Json.obj("error", "server error"), keep);
         }
     }
@@ -388,7 +487,7 @@ final class Http {
             for (String p : name.split("\\.")) if (Integer.parseInt(p) > 255) return false;
             return true;
         }
-        return name.indexOf(':') >= 0 && name.matches("[0-9a-fA-F:.%a-zA-Z]+"); // an IPv6 address
+        return name.indexOf(':') >= 0 && name.matches("[0-9a-fA-F:.]+(%[0-9a-zA-Z]+)?"); // an IPv6 address
     }
 
     /** Only answer requests addressed to this machine by IP or "localhost" (stops DNS rebinding). */
@@ -548,7 +647,9 @@ final class Http {
         if (cache != null) h.append("Cache-Control: ").append(cache).append("\r\n");
         if (extra != null) for (Map.Entry<String, String> e : extra.entrySet()) h.append(e.getKey()).append(": ").append(e.getValue()).append("\r\n");
         for (String[] s : SECURITY_HEADERS) h.append(s[0]).append(": ").append(s[1]).append("\r\n");
-        h.append("Connection: ").append(keep ? "keep-alive" : "close").append("\r\n\r\n");
+        h.append("Connection: ").append(keep ? "keep-alive" : "close").append("\r\n");
+        if (keep) h.append("Keep-Alive: timeout=").append(IDLE_MS / 1000 - 1).append("\r\n"); // reuse ends before we close it
+        h.append("\r\n");
         out.write(h.toString().getBytes("UTF-8"));
         out.write(body);
     }

@@ -20,14 +20,22 @@ if not defined PY (
   exit /b 1
 )
 
-rem Pronunciation audio uses edge-tts (optional). Try to install it once.
+rem Pronunciation audio uses edge-tts (optional). Try to install it once. The version is pinned, so a new
+rem release is never installed before it has been tried; to move to a newer one, change it here.
+set "EDGE_TTS=edge-tts==7.2.8"
+rem a setup that failed (no internet, say) is tried again a day later
+forfiles /m .tts-setup-tried /d -1 /c "cmd /c del @path" >nul 2>nul
 %PY% -c "import edge_tts" >nul 2>nul
 if errorlevel 1 (
   if not exist ".tts-setup-tried" (
     echo Setting up pronunciation audio, one time, needs internet...
     type nul > ".tts-setup-tried"
-    %PY% -m pip install --user --quiet --disable-pip-version-check edge-tts
-    if errorlevel 1 echo Could not install edge-tts. The app works without it. See README.md.
+    %PY% -m pip install --user --quiet --disable-pip-version-check --timeout 15 --retries 1 "%EDGE_TTS%"
+    if errorlevel 1 (
+      echo Could not install edge-tts. The app works without it and it will be tried again tomorrow. See README.md.
+    ) else (
+      del ".tts-setup-tried" >nul 2>nul
+    )
   )
 )
 
