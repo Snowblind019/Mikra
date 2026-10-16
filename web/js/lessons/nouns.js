@@ -40,8 +40,8 @@ export const NOUNS = [
       p(tr("Nouns are not random shapes. A few patterns cover most of them, and each pattern tends to carry a kind of meaning. Knowing the patterns helps you guess what a new word is, and how it will change.",
         "Substantivele nu au forme la întâmplare. Câteva tipare le acoperă pe cele mai multe, și fiecare tipar tinde să poarte un fel de înțeles. Când știi tiparele, ghicești ce e un cuvânt nou și cum se va schimba.")),
       h2("Segholates: the two-syllable nouns stressed at the front", "Segolatele: substantive de două silabe cu accentul în față"),
-      pt("The biggest group is the segholate: a short noun with the stress on the first syllable and usually a segol in the second: «מֶלֶךְ» ME-lekh king, «אֶרֶץ» E-retz land, «סֵפֶר» SE-fer book, «קֹדֶשׁ» KO-desh holiness, «נַעַר» NA-ar boy. Originally they had one syllable (malk, sifr, qudsh); the second vowel was added to make them easier to say.",
-        "Cea mai mare grupă e segolatul: un substantiv scurt cu accentul pe prima silabă și de obicei un segol în a doua: «מֶלֶךְ» ME-leh împărat, «אֶרֶץ» E-reț țară, «סֵפֶר» SE-fer carte, «קֹדֶשׁ» KO-deș sfințenie, «נַעַר» NA-ar băiat. La origine aveau o singură silabă (malk, sifr, qudș); a doua vocală a fost adăugată ca să fie mai ușor de rostit."),
+      pt("The biggest group is the segholate: a short noun with the stress on the first syllable and usually a segol in the second: «מֶלֶךְ» {ME-lekh} king, «אֶרֶץ» {E-retz} land, «סֵפֶר» SE-fer book, «קֹדֶשׁ» {KO-desh} holiness, «נַעַר» NA-ar boy. Originally they had one syllable (malk, sifr, {qudsh}); the second vowel was added to make them easier to say.",
+        "Cea mai mare grupă e segolatul: un substantiv scurt cu accentul pe prima silabă și de obicei un segol în a doua: «מֶלֶךְ» {ME-lekh} împărat, «אֶרֶץ» {E-retz} țară, «סֵפֶר» SE-fer carte, «קֹדֶשׁ» {KO-desh} sfințenie, «נַעַר» NA-ar băiat. La origine aveau o singură silabă (malk, sifr, {qudsh}); a doua vocală a fost adăugată ca să fie mai ușor de rostit."),
       pt("That old one-syllable shape comes back as soon as anything is attached. This is why «מֶלֶךְ» becomes «מַלְכִּי» my king and «מַלְכֵי» kings of, and why the plural is «מְלָכִים».",
         "Forma veche de o silabă revine de îndată ce se lipește ceva. De aceea «מֶלֶךְ» devine «מַלְכִּי» împăratul meu și «מַלְכֵי» împărații lui, și de aceea pluralul e «מְלָכִים»."),
       table([tr("Type", "Tip"), tr("Noun", "Substantiv"), tr("with “my”", "cu „meu”"), tr("Plural", "Plural"), tr("Plural construct", "Plural construct")], [
@@ -73,9 +73,9 @@ export const NOUNS = [
     body: () => [
       p(tr("A Hebrew noun keeps its consonants but often changes its vowels when an ending is attached or when it stands in construct. The changes follow a few rules about stress. You don't have to produce them, only to recognise the word underneath.",
         "Un substantiv ebraic își păstrează consoanele, dar adesea își schimbă vocalele când i se lipește o terminație sau când stă în construct. Schimbările urmează câteva reguli legate de accent. Nu trebuie să le produci, doar să recunoști cuvântul de dedesubt.")),
-      h2("Rule 1: a long a two syllables before the stress shrinks to shva", "Regula 1: un a lung aflat cu două silabe înaintea accentului se scurtează la șva"),
-      pt("«דָּבָר» da-VAR has two long a's. Add «־ִים» and the stress moves to the ending; the first a is now two syllables before the stress and becomes shva: «דְּבָרִים» de-va-RIM. The same happens with «־וֹת», with most pronoun endings, and in construct: «דְּבַר», «דְּבָרוֹ» his word.",
-        "«דָּבָר» da-VAR are doi a lungi. Adaugă «־ִים» și accentul trece pe terminație; primul a e acum cu două silabe înaintea accentului și devine șva: «דְּבָרִים» de-va-RIM. La fel se întâmplă cu «־וֹת», cu cele mai multe terminații de pronume și în construct: «דְּבַר», «דְּבָרוֹ» cuvântul lui."),
+      h2("Rule 1: a long a two syllables before the stress shrinks to {shva}", "Regula 1: un a lung aflat cu două silabe înaintea accentului se scurtează la {shva}"),
+      pt("«דָּבָר» da-VAR has two long a's. Add «־ִים» and the stress moves to the ending; the first a is now two syllables before the stress and becomes {shva}: «דְּבָרִים» de-va-RIM. The same happens with «־וֹת», with most pronoun endings, and in construct: «דְּבַר», «דְּבָרוֹ» his word.",
+        "«דָּבָר» da-VAR are doi a lungi. Adaugă «־ִים» și accentul trece pe terminație; primul a e acum cu două silabe înaintea accentului și devine {shva}: «דְּבָרִים» de-va-RIM. La fel se întâmplă cu «־וֹת», cu cele mai multe terminații de pronume și în construct: «דְּבַר», «דְּבָרוֹ» cuvântul lui."),
       table([tr("Form", "Forma"), "דָּבָר", "שָׁלוֹם", "נָבִיא", "לֵבָב"], [
         [tr("plural", "plural"), "דְּבָרִים", "", "נְבִיאִים", "לְבָבוֹת"],
         [tr("construct (… of)", "construct (… lui)"), "דְּבַר", "שְׁלוֹם", "נְבִיא", "לְבַב"],
@@ -161,8 +161,8 @@ export const NOUNS = [
         lt("«־ָהּ» her (on a singular), with the dot in the ה: «לָהּ» to her, «אַרְצָהּ» her land. Without the dot, «־ָה» is just a feminine ending or “toward”.", "«־ָהּ» ei (pe un singular), cu punct în ה: «לָהּ» ei, «אַרְצָהּ» țara ei. Fără punct, «־ָה» e doar o terminație feminină sau „spre”.")),
       ex("עַל־יָדֶיהָ", "al ya·dei·ha", tr("on her hands", "pe mâinile ei"), "for her hands", "", [0, 24, 22]),
       p(tr("The same endings go on verbs as objects: שָׁמְרֵנִי “keep me” (see the lesson on object endings on verbs).", "Aceleași terminații se pun și pe verbe, ca complement: שָׁמְרֵנִי „păzește-mă” (vezi lecția despre terminațiile de complement pe verbe).")),
-      tip(tr("Rule of thumb: a word ending in -kha, -o, -ah, -nu, -khem, -am belongs to someone. Look for who it is in the sentence.",
-        "Regulă simplă: un cuvânt terminat în -ha, -o, -a, -nu, -hem, -am e al cuiva. Caută în propoziție al cui e.")),
+      tip(tr("Rule of thumb: a word ending in {-kha}, -o, {-ah|-ah}, -nu, {-khem}, -am belongs to someone. Look for who it is in the sentence.",
+        "Regulă simplă: un cuvânt terminat în {-kha}, -o, {-ah|-ah}, -nu, {-khem}, -am e al cuiva. Caută în propoziție al cui e.")),
     ],
     search: "/HSp", searchLabel: () => tr("words with a pronoun ending", "cuvinte cu terminație de pronume"),
   },
@@ -211,7 +211,7 @@ export const NOUNS = [
     body: () => [
       table([tr("Hebrew", "Ebraică"), tr("Sound", "Pronunție"), tr("Meaning", "Înțeles")], [
         ["אֲנִי / אָנֹכִי", { t: "a·ni / a·no·khi" }, tr("I", "eu")], ["אַתָּה", { t: "at·tah" }, tr("you (m)", "tu (m)")], ["אַתְּ", { t: "at" }, tr("you (f)", "tu (f)")],
-        ["הוּא", { t: "hu" }, tr("he", "el")], ["הִיא", { t: "hi" }, tr("she (often written הִוא in the Torah)", "ea (scris adesea הִוא în Tora)")], ["אֲנַחְנוּ", { t: "a·nach·nu" }, tr("we", "noi")],
+        ["הוּא", { t: "hu" }, tr("he", "el")], ["הִיא", { t: "hi" }, tr("she (often written הִוא in the {Torah})", "ea (scris adesea הִוא în {Torah})")], ["אֲנַחְנוּ", { t: "a·nach·nu" }, tr("we", "noi")],
         ["אַתֶּם", { t: "at·tem" }, tr("you (m pl)", "voi (m)")], ["אַתֶּן / אַתֵּנָה", { t: "at·ten / at·te·nah" }, tr("you (f pl)", "voi (f)")], ["הֵם / הֵמָּה", { t: "hem / hem·mah" }, tr("they (m)", "ei")], ["הֵן / הֵנָּה", { t: "hen / hen·nah" }, tr("they (f)", "ele")]]),
       h2("When the separate pronoun is used", "Când se folosește pronumele separat"),
       pt("A verb already says who does it («שָׁמַרְתִּי» I kept). So a separate pronoun with a verb adds emphasis or contrast: «אָנֹכִי מָגֵן לָךְ» I am your shield, «וְאַתֶּם שְׂנֵאתֶם אֹתִי» but you hated me.",
@@ -340,8 +340,8 @@ export const NOUNS = [
     title: () => tr("Asking questions", "Cum se pun întrebările"),
     body: () => [
       h2("Yes-or-no questions: the little הֲ", "Întrebări cu da sau nu: micul הֲ"),
-      pt("A question that expects yes or no starts with «הֲ» glued to the first word (before a guttural or shva it is «הַ»). Nothing else changes; the word order stays the same as in a statement.",
-        "O întrebare care așteaptă da sau nu începe cu «הֲ» lipit de primul cuvânt (înaintea unei guturale sau a unui șva e «הַ»). Nimic altceva nu se schimbă; ordinea cuvintelor rămâne ca într-o afirmație."),
+      pt("A question that expects yes or no starts with «הֲ» glued to the first word (before a guttural or {shva} it is «הַ»). Nothing else changes; the word order stays the same as in a statement.",
+        "O întrebare care așteaptă da sau nu începe cu «הֲ» lipit de primul cuvânt (înaintea unei guturale sau a unui {shva} e «הַ»). Nimic altceva nu se schimbă; ordinea cuvintelor rămâne ca într-o afirmație."),
       ex("הֲשֹׁמֵר אָחִי אָנֹכִי", "ha·sho·mer a·chi a·no·khi", tr("am I my brother's keeper?", "sunt eu păzitorul fratelui meu?"), "Am I my brother's keeper?", "Sunt eu păzitorul fratelui meu?", [0, 4, 9]),
       ex("הַאַתָּה זֶה בְּנִי עֵשָׂו", "ha·a·tah zeh be·ni e·sav", tr("are you my son Esau?", "ești tu fiul meu Esau?"), "whether thou be my very son Esau", "dacă ești cu adevărat fiul meu Esau", [0, 27, 21]),
       pt("«הֲלֹא» “is it not?” expects the answer yes: «הֲלֹא־זֶה הַדָּבָר» is this not the word…? “Whether … or not” is «הֲ … אִם־לֹא».",

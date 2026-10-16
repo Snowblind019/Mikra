@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android's backup of the app (to the user's own Google account, or adb backup) takes only the saved progress.
+     Not the web view's storage (its cookie and its copy of the progress) or temporary files; the Bible text, the daily
+     copies and the audio clips are in no-backup or cache folders anyway. -->
+<full-backup-content>
+    <include domain="file" path="userdata.json" />
+</full-backup-content>

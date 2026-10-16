@@ -35,6 +35,7 @@ public final class DesktopMain {
         api.setLessonSource(web);
         Http http = new Http(api, web, a.get("--key"), false);
         http.debug = true;
+        http.keyStarts = true; // the tests open /__start?t=KEY, like the link the desktop app prints
         int p = http.start(port, 1);
         System.out.println("Mikra (Java) is running at http://localhost:" + p + "/");
         Thread.currentThread().join();

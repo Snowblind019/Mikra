@@ -4,9 +4,9 @@
 import { api, store } from "./store.js";
 import { ctx } from "./ctx.js";
 import { h, clear, icon, iconBtn, he, heBig, toast, fmtInt, debounce, trt } from "./ui.js";
-import { tr, trn, times, lang, bible, bibleName, meaning, cursive } from "./i18n.js";
+import { tr, trn, roDe, times, lang, bible, bibleName, meaning, cursive } from "./i18n.js";
 import { errText } from "./store.js";
-import { translit, wordTranslit, lemmaTranslit, morphRole, parseMorph, shortParse, affix, isAffix, speakableWord, speakableLemma, speakableText, glossClean, stripCantillation, stripPoints, display, escapeHtml } from "./hebrew.js";
+import { translit, wordTranslit, lemmaTranslit, morphRole, parseMorph, shortParse, affixIn, isAffix, speakableWord, speakableLemma, speakableText, verseSpeakable, glossClean, stripCantillation, stripPoints, display, escapeHtml } from "./hebrew.js";
 import { speak } from "./audio.js";
 
 let el, hooks;
@@ -126,6 +126,8 @@ export async function openWord(o) {
   const me = current = { type: "word", o, w, key: w.lemma };
   const inner = shell();
   const ref = ctx.refText(o.book, o.ch, o.v);
+  // opened from "Take this verse apart": a way back to the whole verse
+  if (o.back) inner.append(h("button", { class: "btn ghost small", type: "button", onclick: o.back }, icon("left"), tr("Back to the verse", "Înapoi la verset")));
   inner.append(h("div", { class: "row small muted", style: { paddingRight: "36px" } },
     h("span", null, tr(`${ref}, word ${o.w + 1} of ${o.vs.words.length}`, `${ref}, cuvântul ${o.w + 1} din ${o.vs.words.length}`)),
     h("span", { class: "spacer" }),
@@ -134,7 +136,7 @@ export async function openWord(o) {
 
   inner.append(bigWord(w, s));
   inner.append(h("div", { class: "row", style: { justifyContent: "flex-end" } },
-    h("div", { class: "wp-tr", html: translit(wordTranslit(w, s), s) }), ...audioBtns(() => speakableWord(w, s))));
+    h("div", { class: "wp-tr", html: translit(wordTranslit(w, s), s, { heb: w.text }) }), ...audioBtns(() => speakableWord(w, s))));
   const here = lang() === "ro" ? (o.roLinked || o.glossRo || glossClean(w.gloss.join(" "))) : glossClean(w.gloss.join(" "));
   inner.append(h("div", { class: "wp-gloss" }, here));
   if (o.sideLinked && !(lang() === "ro" && o.sideName === "Cornilescu")) {
@@ -156,7 +158,7 @@ export async function openWord(o) {
     const role = morphRole(w, i);
     const tag = w.tags[i];
     const p = parseMorph(w.codes[i]);
-    const af = isAffix(tag) ? affix(tag) : null;
+    const af = isAffix(tag) ? affixIn(tag, w.codes[i]) : null;
     let what;
     if (af) {
       what = [h("b", null, (role === "pre" ? tr("Prefix: ", "Prefix: ") : tr("Ending: ", "Terminație: ")) + af[0]), h("div", { class: "parse" }, af[1])];
@@ -173,7 +175,7 @@ export async function openWord(o) {
   });
   if (w.extra.x === "Q" || w.extra.var) {
     inner.append(h("div", { class: "wp-sec" }, h("h3", null, tr("Reading note", "Notă de citire")),
-      h("div", { class: "variant" }, w.extra.x === "Q" ? tr("This word follows the Qere, the way the scribes said to read it aloud. ", "Cuvântul urmează Qere, felul în care cărturarii au spus să fie citit cu voce tare. ") : "",
+      h("div", { class: "variant" }, w.extra.x === "Q" ? tr("This word follows the {Qere}, the way the scribes said to read it aloud. ", "Cuvântul urmează {Qere}, felul în care cărturarii au spus să fie citit cu voce tare. ") : "",
         w.extra.var ? variantLines(w.extra.var) : null)));
   }
   if (w.extra.x === "X") {
@@ -188,7 +190,7 @@ export async function openWord(o) {
 }
 
 const VARIANT_LABELS = {
-  K: ["Written in the text (ketiv)", "Scris în text (ketiv)"], Q: ["Read aloud (qere)", "Citit cu voce tare (qere)"],
+  K: ["Written in the text (ketiv)", "Scris în text (ketiv)"], Q: ["Read aloud ({qere})", "Citit cu voce tare ({qere})"],
   L: ["Letters as in the Leningrad Codex", "Literele din Codexul Leningrad"], A: ["Aleppo Codex", "Codexul din Alep"],
   B: ["BHS printed edition", "Ediția tipărită BHS"], C: ["Cairo Codex", "Codexul din Cairo"], D: ["Dead Sea Scrolls", "Manuscrisele de la Marea Moartă"],
   E: ["Scholarly correction", "Corectură a cercetătorilor"], H: ["Second Rabbinic Bible", "A doua Biblie rabinică"],
@@ -283,7 +285,7 @@ function appendLemmaSections(inner, lemma) {
   sec.append(h("div", { class: "lemma-head" },
     h("div", { class: "row" }, ...audioBtns(() => speakableLemma(lemma.hebrew, lemma.key, s))),
     he(lemma.hebrew)));
-  sec.append(h("div", { style: { textAlign: "right", fontSize: "17px" }, html: translit(lemmaTranslit(lemma.translit, lemma.key, s), s) }));
+  sec.append(h("div", { style: { textAlign: "right", fontSize: "17px" }, html: translit(lemmaTranslit(lemma.translit, lemma.key, s), s, { heb: lemma.hebrew }) }));
   sec.append(h("div", { style: { fontSize: "16px", marginTop: "6px" } }, h("b", null, lemmaMeaning(lemma))));
   if (lang() === "ro" && !lemma.gloss_ro) sec.append(h("div", { class: "small faint" }, tr("", "(înțeles în engleză: nu apare în Cornilescu)")));
   const pos = lexPos(lemma.morph);
@@ -366,7 +368,17 @@ function appendLemmaSections(inner, lemma) {
           h("span", { class: "small muted" }, tr("Root", "Rădăcina") + (fam.root_def && lang() === "en" ? ": " + fam.root_def : "")),
           h("span", { class: "root-letters" + (cursive() ? " cursive" : ""), lang: "he" }, letters(cursive() ? stripPoints(fam.root || "") : fam.root).join(" ")))
       : h("div", { class: "small muted", style: { marginBottom: "6px" } }, tr("Related words", "Cuvinte înrudite"));
+    // learn the family together: the members not in review yet and not known (names and words not in the text left out)
+    const newMembers = () => members.filter(m => m.key && !isAffix(m.key) && (m.freq || 0) > 0 && m.hebrew && !store.hasCard("L:" + m.key) && !store.isKnown(m.key));
+    const n0 = newMembers().length;
+    const addFam = n0 ? h("button", { class: "btn small wrap", type: "button", onclick: () => {
+      const n = store.addCards(newMembers().map(m => ({ id: "L:" + m.key, kind: "lemma", key: m.key, heb: m.hebrew, translit: m.translit || "", gloss: m.gloss || "", glossRo: m.glossRo || "" })));
+      toast(tr("Added ", "Am adăugat ") + trn(n, "word", "words", "cuvânt", "cuvinte") + tr(" to review", " la recapitulare"));
+      addFam.replaceWith(h("span", { class: "pill review" }, tr("Family in review", "Familia e în recapitulare")));
+      hooks.refreshMarks();
+    } }, icon("plus"), tr(n0 === 1 ? "Add the word not in review yet" : `Add the ${n0} words not in review yet`, n0 === 1 ? "Adaugă cuvântul care nu e încă în recapitulare" : `Adaugă cele ${n0} ${roDe(n0)}cuvinte care nu sunt încă în recapitulare`)) : null;
     inner.append(h("div", { class: "wp-sec" }, h("h3", null, tr("Root and related words", "Rădăcina și cuvintele înrudite")), head, list,
+      addFam ? h("div", { class: "row", style: { marginTop: "8px" } }, addFam) : null,
       h("div", { class: "small faint", style: { marginTop: "6px" } }, tr("Most Hebrew words grow from a root of three consonants. Learning one member makes the others easier.",
         "Cele mai multe cuvinte ebraice cresc dintr-o rădăcină de trei consoane. Când înveți unul, celelalte devin mai ușoare."))));
   }
@@ -530,7 +542,7 @@ export async function openLemma(key) {
   const s = store.settings;
   inner.append(heBig(lemma.hebrew, "wp-word"));
   inner.append(h("div", { class: "row", style: { justifyContent: "flex-end" } },
-    h("div", { class: "wp-tr", html: translit(lemmaTranslit(lemma.translit, lemma.key, s), s) }), ...audioBtns(() => speakableLemma(lemma.hebrew, lemma.key, s))));
+    h("div", { class: "wp-tr", html: translit(lemmaTranslit(lemma.translit, lemma.key, s), s, { heb: lemma.hebrew }) }), ...audioBtns(() => speakableLemma(lemma.hebrew, lemma.key, s))));
   inner.append(h("div", { class: "wp-gloss" }, lemmaMeaning(lemma)));
   const actions = h("div", { class: "wp-actions" });
   inner.append(actions);
@@ -562,6 +574,58 @@ export async function openLemma(key) {
   appendLemmaSections(inner, lemma);
 }
 
+// ------------------------------------------------------------------ a whole verse, word by word
+
+// "Take this verse apart": every word with its parts (prefixes, the main word, endings), what each part means and its
+// grammar, the meaning in this verse and its sound. o: { book, ch, v, vs, sideName, sideText, sideLang, meanings[],
+// isNew(wi), onWord(wi), addNew() -> Promise<number> }
+export function openVerse(o) {
+  const s = store.settings;
+  const inner = shell();
+  current = { type: "verse", o };
+  const words = o.vs.words;
+  const idx = words.map((_, i) => i).filter(i => words[i].extra.x !== "X" || s.showLxx);
+  inner.append(h("div", { class: "small muted", style: { paddingRight: "36px" } }, `${ctx.refText(o.book, o.ch, o.v)}, ` + tr("word by word", "cuvânt cu cuvânt")));
+  const text = idx.map(i => stripCantillation(words[i].text) + (words[i].punct.includes("־") ? "־" : " ")).join("").trim();
+  inner.append(h("div", { class: "vb-verse", lang: "he", dir: "rtl" }, text));
+  inner.append(h("div", { class: "row", style: { justifyContent: "flex-end" } }, ...audioBtns(() => verseSpeakable(words, s))));
+  if (o.sideText) inner.append(h("div", { class: "vb-side", lang: o.sideLang }, h("span", { class: "muted" }, o.sideName + ": "), o.sideText));
+  const newCount = () => new Set(idx.filter(i => o.isNew(i)).map(i => words[i].lemma)).size;
+  const n0 = newCount();
+  if (n0) {
+    const add = h("button", { class: "btn wrap", type: "button", onclick: async () => {
+      add.disabled = true;
+      let n = 0;
+      try { n = await o.addNew(); } catch (e) { toast(errText(e)); add.disabled = false; return; }
+      toast(tr("Added ", "Am adăugat ") + trn(n, "word", "words", "cuvânt", "cuvinte") + tr(" to review", " la recapitulare"));
+      add.replaceWith(h("span", { class: "pill review" }, tr("New words in review", "Cuvintele noi sunt în recapitulare")));
+      for (const el of list.querySelectorAll(".vb-word.vb-new")) el.classList.remove("vb-new");
+    } }, icon("plus"), tr(n0 === 1 ? "Add the new word of this verse to review" : `Add the ${n0} new words of this verse to review`,`Adaugă la recapitulare ${n0 === 1 ? "cuvântul nou" : `cele ${n0} ${roDe(n0)}cuvinte noi`} din verset`));
+    inner.append(h("div", { class: "wp-actions" }, add));
+  }
+  inner.append(h("div", { class: "small faint" }, trt("Prefixes are teal, endings plum. Click a word to study it in full.", "Prefixele sunt turcoaz, terminațiile mov. Apasă pe un cuvânt ca să-l studiezi pe larg.")));
+  const list = h("ol", { class: "vb-list" });
+  for (const wi of idx) {
+    const w = words[wi];
+    const word = h("button", { class: "vb-he", type: "button", lang: "he", dir: "rtl", title: tr("Study this word", "Studiază cuvântul"), onclick: () => o.onWord(wi) });
+    w.morphs.forEach((m, i) => word.append(h("span", { class: morphRole(w, i) }, cursive() ? stripPoints(stripCantillation(m)) : stripCantillation(m))));
+    const parts = h("div", { class: "vb-parts" });
+    w.morphs.forEach((m, i) => {
+      const role = morphRole(w, i);
+      const af = isAffix(w.tags[i]) ? affixIn(w.tags[i], w.codes[i]) : null;
+      const p = parseMorph(w.codes[i]);
+      const what = af ? [h("b", null, af[0]), h("div", { class: "parse" }, af[1])]
+        : [h("b", null, capital(p.label)), p.conjHelp ? h("div", { class: "parse" }, capital(p.conjHelp)) : null];
+      parts.append(h("div", { class: "morph-row " + role }, he(display(m, { cantillation: false, vowels: true })), h("div", { class: "what" }, what)));
+    });
+    list.append(h("li", { class: "vb-word" + (o.isNew(wi) ? " vb-new" : "") },
+      h("div", { class: "vb-head" }, word, h("span", { class: "vb-tr", html: translit(wordTranslit(w, s), s, { heb: w.text }) }),
+        iconBtn("speaker", tr("Listen", "Ascultă"), () => speak(speakableWord(w, s)))),
+      h("div", { class: "vb-mean" }, o.meanings[wi] || ""), parts));
+  }
+  inner.append(list);
+}
+
 // ------------------------------------------------------------------ phrase
 
 export function openPhrase(o) {
@@ -569,7 +633,7 @@ export function openPhrase(o) {
   const inner = shell();
   current = { type: "phrase", o };
   const text = o.words.map(w => stripCantillation(w.text) + (w.punct.includes("־") ? "־" : " ")).join("").trim();
-  const trHtml = o.words.map(w => translit(wordTranslit(w, s), s)).join(" ");
+  const trHtml = o.words.map(w => translit(wordTranslit(w, s), s, { heb: w.text })).join(" ");
   const trPlain = o.words.map(w => wordTranslit(w, s)).join(" ");
   const gloss = o.words.map(w => glossClean(w.gloss.join(" "))).join(" ");
   const speakText = o.words.map(w => speakableWord(w, s)).join(" ");
@@ -590,7 +654,7 @@ export function openPhrase(o) {
   const list = h("div", { class: "morphs" });
   o.words.forEach((w, i) => {
     list.append(h("div", { class: "morph-row" }, he(stripCantillation(w.text)),
-      h("div", { class: "what" }, h("b", null, (o.wordMeanings && o.wordMeanings[i]) || glossClean(w.gloss.join(" "))), h("div", { class: "parse", html: translit(wordTranslit(w, s), s) }), h("div", { class: "parse" }, shortParse(w.codes[w.main])))));
+      h("div", { class: "what" }, h("b", null, (o.wordMeanings && o.wordMeanings[i]) || glossClean(w.gloss.join(" "))), h("div", { class: "parse", html: translit(wordTranslit(w, s), s, { heb: w.text }) }), h("div", { class: "parse" }, shortParse(w.codes[w.main])))));
   });
   inner.append(h("div", { class: "wp-sec" }, h("h3", null, tr("Word by word", "Cuvânt cu cuvânt")), list));
 }

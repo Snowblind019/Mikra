@@ -77,6 +77,10 @@ export const DEFAULT_SETTINGS = {
   divineName: "adonai",      // adonai | yahweh | as-written
   newPerDay: 15,
   reviewDirections: { recognize: true, recall: true, listen: false },
+  practiceSide: "both",      // Pick the meaning and Flip through: he (show the Hebrew) | mean (show the meaning) | both (take turns)
+  // alphabet drills, what the question shows: he (the letter, syllable, end form, handwriting or Hebrew word) | mean (its
+  // name, sound, normal form, print form or meaning) | both (take turns); the defaults are how each drill always worked
+  drillSides: { names: "he", sounds: "mean", lookalikes: "mean", vowels: "he", finals: "he", scripts: "both", words: "he" },
   autoKnownDays: 21,
   heFont: "",
   autoplayWord: false,
@@ -125,6 +129,10 @@ function normalize(src) {
   const st = src.settings && typeof src.settings === "object" ? src.settings : {};
   out.settings = Object.assign({ ...DEFAULT_SETTINGS }, st);
   out.settings.reviewDirections = Object.assign({ ...DEFAULT_SETTINGS.reviewDirections }, st.reviewDirections || {});
+  const sides = st.drillSides && typeof st.drillSides === "object" && !Array.isArray(st.drillSides) ? st.drillSides : {};
+  out.settings.drillSides = { ...DEFAULT_SETTINGS.drillSides };
+  for (const k of Object.keys(out.settings.drillSides)) if (["he", "mean", "both"].includes(sides[k])) out.settings.drillSides[k] = sides[k];
+  if (!["he", "mean", "both"].includes(out.settings.practiceSide)) out.settings.practiceSide = DEFAULT_SETTINGS.practiceSide;
   if (!out.settings.themeOverrides || typeof out.settings.themeOverrides !== "object") out.settings.themeOverrides = {};
   if (out.settings.lang !== "en" && out.settings.lang !== "ro") {
     const nav = (typeof navigator !== "undefined" && navigator.language || "").toLowerCase();
@@ -151,6 +159,16 @@ function normalize(src) {
   for (const k of ["daily", "saved"]) for (const [id, v] of Object.entries(out[k])) if (!isObj(v)) delete out[k][id];
   // memorizing level 0-3 (a text or a fraction here made Easier and Harder count to NaN)
   for (const v of Object.values(out.saved)) if (!(Number.isInteger(v.level) && v.level >= 0 && v.level <= 3)) v.level = 0;
+  // a saved verse's review schedule (see words.js): a broken one is dropped, and the verse simply starts over
+  for (const v of Object.values(out.saved)) {
+    if (v.mastered != null && !Number.isFinite(v.mastered)) delete v.mastered;
+    if (v.t != null && !Number.isFinite(v.t)) delete v.t;
+    if (v.srs == null) continue;
+    const s = v.srs;
+    const okNums = isObj(s) && Number.isFinite(s.due) && ["stability", "difficulty", "reps", "lapses", "last"].every(f => s[f] === undefined || Number.isFinite(s[f]));
+    if (!okNums || !["new", "learning", "relearning", "review"].includes(s.state)) delete v.srs;
+    else v.srs = { state: s.state, due: s.due, stability: s.stability || 0, difficulty: s.difficulty || 0, reps: s.reps || 0, lapses: s.lapses || 0, last: s.last || 0 };
+  }
   for (const day of Object.values(out.daily)) for (const [f, v] of Object.entries(day)) if (!Number.isFinite(v)) delete day[f];
   // settings out of range or of the wrong type (sizes of 5000 px, a missing "known after" number...)
   const s = out.settings;
@@ -377,6 +395,14 @@ export const store = {
     } catch (_) { return !!file; }
   },
 };
+
+// A card forgotten this many times is a "tricky word": its card says so and offers a note to help remember it.
+export const LEECH = 4;
+// Cards you find hard: forgotten at least once, or rated hard often (high difficulty). Most forgotten first.
+export function hardCards() {
+  return Object.values(data.cards).filter(c => !c.suspended && c.kind !== "phrase" && c.state !== "new" && ((c.lapses || 0) >= 1 || (c.difficulty || 0) >= 7))
+    .sort((a, b) => (b.lapses || 0) - (a.lapses || 0) || (b.difficulty || 0) - (a.difficulty || 0));
+}
 
 // Days in a row with study: a day counts when it has flashcard reviews or at least 5 minutes of study.
 // Today counts once it has either; an empty today doesn't break a streak that ran until yesterday.

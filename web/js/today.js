@@ -7,6 +7,8 @@ import { tr, trn, times, roDe, lang, meaning } from "./i18n.js";
 import { translit, lemmaTranslit, speakableLemma } from "./hebrew.js";
 import { speak } from "./audio.js";
 import { isDue, studyDate } from "./fsrs.js";
+import { dueVerseKeys } from "./words.js";
+import { nextLesson, lessonCount } from "./grammar.js";
 
 let root;
 let seq = 0;
@@ -76,9 +78,16 @@ async function render() {
     due + fresh ? tr(`${due} due, ${fresh} new`, `${due} de repetat, ${fresh} noi`) : (Object.keys(store.data.cards).length ? tr("All done for now", "Gata pentru acum") : tr("No cards yet: add a word deck", "Încă nu ai cartonașe: adaugă un pachet")),
     due + fresh ? tr("Start", "Începe") : tr("Open", "Deschide"), () => ctx.navigate("review")));
   const savedN = Object.keys(store.data.saved).length;
+  const versesDue = dueVerseKeys().length;
   tiles.append(tile(icon("pen"), tr("Verses by heart", "Versete pe de rost"),
-    savedN ? trn(savedN, "saved verse", "saved verses", "verset salvat", "versete salvate") : tr("Save a verse in the reader with the star", "Salvează un verset în cititor cu steaua"),
-    tr("Practice", "Exersează"), () => ctx.navigate("words", { tab: "verses" })));
+    versesDue ? trn(versesDue, "verse to repeat today", "verses to repeat today", "verset de repetat azi", "versete de repetat azi")
+      : savedN ? trn(savedN, "saved verse", "saved verses", "verset salvat", "versete salvate") : tr("Save a verse in the reader with the star", "Salvează un verset în cititor cu steaua"),
+    versesDue ? tr("Repeat", "Repetă") : tr("Practice", "Exersează"), () => ctx.navigate("words", versesDue ? { tab: "verses", review: true } : { tab: "verses" })));
+  // the next grammar lesson not marked as done
+  const lesson = nextLesson();
+  tiles.append(tile(icon("grammar"), tr("Grammar", "Gramatică"),
+    lesson ? `${lesson.n}. ${lesson.title}` : tr(`All ${lessonCount()} lessons done`, `Toate cele ${lessonCount()} de lecții sunt terminate`),
+    lesson ? tr("Learn", "Învață") : tr("Open", "Deschide"), () => ctx.navigate("grammar", lesson ? { lesson: lesson.id } : {})));
   page.append(tiles);
 
   // word of the day + easiest chapters (need the server)
@@ -115,7 +124,7 @@ function fillWord(box, items) {
   const s = store.settings;
   const say = () => speak(speakableLemma(pick.hebrew, pick.key, s));
   box.append(heBig(pick.hebrew, "big-he"),
-    h("div", { class: "row", style: { justifyContent: "center" } }, h("span", { class: "tr", html: translit(lemmaTranslit(pick.translit, pick.key, s), s) }), iconBtn("speaker", tr("Listen", "Ascultă"), say)),
+    h("div", { class: "row", style: { justifyContent: "center" } }, h("span", { class: "tr", html: translit(lemmaTranslit(pick.translit, pick.key, s), s, { heb: pick.hebrew }) }), iconBtn("speaker", tr("Listen", "Ascultă"), say)),
     h("div", { class: "gloss" }, meaning(pick)),
     h("div", { class: "small muted", style: { textAlign: "center" } }, tr(`Appears ${times(pick.freq)} in the Old Testament.`, `Apare ${times(pick.freq)} în Vechiul Testament.`)),
     h("div", { class: "row", style: { justifyContent: "center", marginTop: "10px" } },

@@ -1,5 +1,91 @@
 # Changes
 
+## 2.4.0: learning the forms, verses on a schedule
+
+### New
+
+- **Take this verse apart** (reader, the layers button on each verse): every word of the verse split into its prefixes, main word and endings, with what each part means, its grammar (stem, tense, person…), its sound and its meaning in this verse. Click a word to study it in full, and come back to the verse from there. A button adds the verse's new words to review.
+- **Parse the verb** (Review, practice games): a verb form from the Bible, and you choose its stem, tense and person. The wrong answers each change one thing (the person, the tense or the stem), so you learn to look at each part. Forms that are written the same in two ways (תִּשְׁמֹר is "she will" and "you will", a jussive often looks like an imperfect) are never offered against each other. The answer explains the form and links to its grammar lesson and its verse.
+- **Prefixes and endings** (Review, practice games): a word from the chapter you read last with one small part marked, and you choose what it means: and, the, in, to the, his, them, we… The answer shows the whole word part by part (וּ + בְ + בֵית + וֹ = and + in + house + his).
+- **Quiz me** (Grammar, under "Find it in the Bible"): verses that use the form the lesson teaches, and you click the word that shows it. Every matching word in the verse counts. With 80% right, the lesson can be marked as done from there.
+- **Saved verses on a schedule:** a verse you have learned by heart comes back to repeat, like a flashcard (Again, Hard, Good, Easy). Today shows how many are due; My words, Saved verses has a button to repeat them.
+- **Build it** (saved verses): the words of the verse are shuffled, and you put them back in order.
+- **Flashcard hints:** the Hint button (or H) before the answer gives a little at a time: the sound, then the verse with the word's translation left out (Hebrew → meaning); the first letter and how many letters follow, then the sound (meaning → Hebrew); the written word (listening).
+- **Notes on the card:** the answer side shows your note for the word and lets you write or change it right there. A word forgotten four times is marked "Tricky word", and its note opens with a tip to write a memory hook. My words has a filter for these cards.
+- **After a practice game:** the words you missed are listed, with a button to add each to review, and "Practise the ones I missed" starts a round with only those.
+- **My hardest words:** a new set of practice words, the cards you forgot most often.
+- **Progress:** the reviews coming up in the next two weeks, how many reviews you remembered in the last 30 days, the verses you know by heart, and the words you find hardest, with a button to practise them.
+- **Today:** a tile with the next grammar lesson, and the saved verses tile says when verses are due.
+- **Word families:** "Root and related words" in the word panel can add the whole family to review at once.
+- **Reader:** "Practise these words" under the chapter's word list starts a game with the words of that chapter.
+- Settings, Keyboard shortcuts lists H for hints.
+
+### Security
+
+- Android: the start link the app's window opens is now a one-time link that runs out after a minute. Before, it held the key itself and worked for as long as the app ran, so anything that saw the link (a log, a screen reader) could use your progress.
+- Android: requests with more than 64 header lines or 32 KB of headers, or with two Host, Origin, Content-Length or Content-Type headers, are refused. Before, another app could send 100 lines of 16 KB each, joined and copied again and again, and use up the app's memory.
+- Android: saves are limited to 24 MB (progress is a few MB at most), and a save that runs out of memory gets an answer instead of taking the app down.
+- Android: if the server can't accept connections for a moment (no file handles left, say), it waits a little before trying again instead of keeping a CPU core busy.
+- Android: the backup Android makes of the app (to your Google account, or adb backup) takes only your saved progress, not the web view's storage or temporary files.
+- Android: "save to Downloads" only writes the files the app makes (.json backups, .tsv word lists), with a matching extension, and never a hidden file. The web view can't open content links.
+- The run script stops if it can't change to its own folder.
+
+### Fixes
+
+- Grammar, Find it in the Bible: the search wrote one "?" for every grammar code a pattern matched. Two lessons match over a thousand codes, more than SQLite allows on Android 7 to 11, so their examples never loaded on those phones (and on computers with an older SQLite).
+- Word panel: a preposition whose vowel holds the article (לַ, בַּ, כַּ) now says "to + the", "in + the" instead of just "to, for".
+
+### Checked
+
+- Static analysis of the Python (bandit), JavaScript (ESLint with security rules) and shell scripts (shellcheck), pattern rules over the Python, JavaScript and Java code (no dynamic code, every place that writes HTML escapes what it writes), and an independent review of the new code and of the Android server.
+- Malware sweep: nothing malicious. No hidden or bidi characters, no encoded blobs, no network calls except edge-tts and the build script's GitHub downloads, the fonts are the real Literata, Noto Serif Hebrew and Ktav Yad fonts, the PNG icons have nothing after their end, the database passes SQLite's integrity check, has no triggers or views, and none of its text holds markup.
+- Browser tests of every new feature in English and Romanian, print and cursive, desktop and phone width, against both the Python server and the Java server of the Android app.
+
+## 2.3.0: choose which side you see
+
+- Review, practice games: a new “Show first” choice above the games: the Hebrew, the meaning, or both taking turns (as before).
+  - With the Hebrew, Pick the meaning shows only the Hebrew word and you choose what it means. With the meaning, it shows only the meaning and you choose the Hebrew word (the game is then called Pick the Hebrew word).
+  - Flip through cards follows it too: the Hebrew on the front and the meaning on the back, or the meaning on the front and the Hebrew, its sound and pronunciation on the back.
+  - The Hebrew in the answers follows the print / handwriting switch at the top, as before.
+- Review, flashcards: under Start review, “Flashcards ask” switches the kinds of cards on and off right there (Hebrew → meaning, meaning → Hebrew, listening). It is the same choice as in Settings, Review. At least one stays on, and new cards always start Hebrew → meaning.
+- Alphabet, drills: every drill has a “Show” switch at the top, and every drill now works both ways:
+  - Letter names: see the letter and choose its name, or see the name and choose the letter.
+  - Letter sounds: see the letter and choose its sound, or see the sound and choose the letter. No two answers share a sound.
+  - Look-alikes: see the letter and choose its name, or see the name and choose the letter.
+  - Vowel reading: see the syllable and choose how it is read, or see how it is read (“ba”) and choose the syllable.
+  - End forms: see the end form and choose the normal letter, or see the letter and choose its end form.
+  - Print and cursive: see the handwritten letter and choose the print one, or the other way round.
+  - Read real words: see the Hebrew and read it out loud, or see the meaning and say the Hebrew word, then check.
+  - “Both, taking turns” alternates. The choice is remembered for each drill; the defaults are the way each drill worked before.
+- Settings, Review: the same “show first” choice for the practice games. The card directions note now says they take turns (since 2.2.2 they no longer come at random).
+
+## 2.2.2: Romanian transliteration and fairer random picks
+
+### Transliteration spelling
+
+- Romanian spelling now covers every Hebrew word in the app, not only the pronunciation lines. With the English interface and Romanian spelling, the English text stays English and the Hebrew words in it are spelled the Romanian way:
+  - letter names: Ghimel, Zain, Het, Iod, Kaf / Haf, Sameh, Ain, Țadi, Kuf, Reș, Șin;
+  - vowel and mark names: Patah, Kamaț, Țere, Hirik, Kubuț, Șuruk, Șva, Dagheș, Mapik, Makaf, Atnah;
+  - stem names in the lessons and the word panel: Kal, Nifal, Hifil, Hofal, Hitpael (and the rare and Aramaic ones);
+  - the Hebrew words quoted inside the lessons and the alphabet (haș-șamaim, iș-mor, ME-leh, AR-ța), the sounds in the alphabet and the syllable builder, and the Yahweh option in Settings (Iahve).
+- The dictionary words (flashcards, My words, word lists, word of the day, the word panel) were only half converted: ph, q and ts stayed (ne·pheș, qa·doș, e·rets). They are now ne·feș, ka·doș, e·reț.
+- A silent ה at the end of a word has no h in Romanian spelling (to·ra, pa·ne, ha·ia, Iahve), as Romanian Bibles write Tora, Sara, Iuda. A ה with mappiq (לָהּ, אֹתָהּ) is pronounced and keeps it (lah, ʼo·tah).
+- Other small fixes: iy and yy (tsiy·yon, chiz·qiy·yah) become ți·ion, hiz·ki·ia instead of tsii·ion, hiz·qii·iah; w becomes v; th becomes t; g before e and i becomes gh also across a syllable dot.
+- The Romanian interface with English spelling now works the other way round too: the Hebrew words in the Romanian lessons switch to sh, tz, ch.
+- Flashcards for the Divine Name follow the Adonai / Yahweh setting like everywhere else (they showed ye·ho·vah).
+- My words: the search also finds a word by its pronunciation as shown (ne·feș or nefes), not only by the stored English spelling.
+- Grammar terms that are the same in every language (qatal, yiqtol, wayyiqtol, weqatal) are left as they are.
+
+### Random picks
+
+- The drills, the practice games and the grammar examples picked each question at random on its own, so some letters came up again and again while others hardly came up. In 44 questions of a letter drill about 3 letters never came up and 3 came up four times or more.
+- Now they deal from a shuffled deck: every item comes up once before any comes back, and the same one never comes twice in a row. A wrong answer brings that item back a few questions later (one at a time, so a bad run doesn't fill the drill with the same few).
+  - Alphabet: letter names, letter sounds, look-alikes (every letter of each group gets its turn), vowel reading (vowels and consonants each go round), end forms, print and cursive (also taking turns which way round), real words, the typing practice and the Random button of the syllable builder.
+  - Review practice games: each game deals from its set of words, Again carries on with the words not seen yet instead of starting the same ones over, and the matching rounds don't repeat words.
+  - The set itself rotates: a new game starts with the words you haven't practised for the longest time (remembered in this browser), from your weaker cards, the chapter's words or the deck you chose. Before, “My cards” usually took the same 40 and the chapter's words always came in the same order.
+  - Flashcard directions (recognize, recall, listen) take turns instead of being drawn at random.
+- Grammar, Find it in the Bible: Show examples brings verses you haven't seen in that lesson yet, one per verse, until the lesson runs out and starts over.
+
 ## 2.2.1: security and bug review
 
 ### Security

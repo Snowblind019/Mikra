@@ -40,7 +40,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(APP_DIR)
 WEB_DIR = os.path.realpath(os.path.join(ROOT, "web"))
 DB_PATH = os.path.join(ROOT, "data", "mikra.db")
-VERSION = "2.2.1"
+VERSION = "2.4.0"
 MAX_BODY = 64 * 1024 * 1024  # userdata.json is a few MB at most; anything bigger is a mistake
 
 # Sent with every response. The page only loads its own files, so other sites can't frame it,
@@ -668,7 +668,9 @@ def api_morphsearch(q):
         ids = [i for i, code in codes if rx.search(code)]
         if not ids:
             return {"items": []}
-        where, args = "mid IN (%s)" % ",".join("?" * len(ids)), list(ids)
+        # The ids are written into the query as numbers: they come from the database itself (never from the request),
+        # and a pattern can match over a thousand codes, more than the 999 "?" older SQLite versions allow.
+        where, args = "mid IN (%s)" % ",".join(str(int(i)) for i in ids), []
     else:
         where, args = "regexp(?, morph)", [pattern]
     if book not in (None, ""):

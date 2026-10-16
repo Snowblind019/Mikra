@@ -154,7 +154,7 @@ function render() {
     h("div", { class: "field" }, h("span", null, tr("Slow speed", "Viteza lentă")),
       seg(s, "slowRate", [["-25%", tr("A bit slower", "Puțin mai rar")], ["-35%", tr("Slower", "Mai rar")], ["-50%", tr("Much slower", "Mult mai rar")]])),
     h("div", { class: "field" }, h("span", null, tr("Read the Divine Name יהוה as", "Numele divin יהוה se citește")),
-      seg(s, "divineName", [["adonai", tr("Adonai (traditional, like “LORD”)", "Adonai (tradițional, ca „Domnul”)")], ["yahweh", "Yahweh"], ["as-written", tr("As written", "Cum e scris")]])),
+      seg(s, "divineName", [["adonai", tr("Adonai (traditional, like “LORD”)", "Adonai (tradițional, ca „Domnul”)")], ["yahweh", tr("{Yahweh}", "{Yahweh}")], ["as-written", tr("As written", "Cum e scris")]])),
     h("label", { class: "check" }, h("input", { type: "checkbox", checked: s.autoplayWord, onchange: (e) => set("autoplayWord", e.target.checked) }), h("span", null, trt("Say each word when I click it", "Citește fiecare cuvânt când apăs pe el", "Say each word when I tap it"))),
     h("div", { class: "row", style: { marginTop: "10px" } },
       h("button", { class: "btn", type: "button", onclick: () => testAudio() }, icon("speaker"), tr("Test audio: שָׁלוֹם", "Probă: שָׁלוֹם")),
@@ -180,10 +180,12 @@ function render() {
     h("label", { class: "field" }, h("span", null, tr("New cards per day", "Cartonașe noi pe zi")), h("input", { type: "number", min: 0, max: 500, value: s.newPerDay, style: { width: "100px" }, onchange: (e) => set("newPerDay", Math.max(0, Math.min(500, Number(e.target.value) || 0))) })),
     h("label", { class: "field" }, h("span", null, tr("A word counts as known after you remember it for this many days", "Un cuvânt se socotește știut după ce îl ții minte atâtea zile")), h("input", { type: "number", min: 3, max: 365, value: s.autoKnownDays, style: { width: "100px" }, onchange: (e) => set("autoKnownDays", Math.min(365, Math.max(3, Math.round(Number(e.target.value)) || 21))) }))));
   const dir = (k, label, hint) => h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!s.reviewDirections[k], onchange: (e) => { const d = { ...s.reviewDirections, [k]: e.target.checked }; set("reviewDirections", d); } }), h("span", null, label, h("div", { class: "small muted" }, hint)));
-  rv.append(h("section", null, h("div", { class: "field" }, h("span", null, tr("Card directions (one is picked at random each time)", "Felul cartonașelor (se alege unul la întâmplare de fiecare dată)"))),
+  rv.append(h("section", null, h("div", { class: "field" }, h("span", null, tr("Card directions (they take turns; new cards always start Hebrew to meaning)", "Felul cartonașelor (vin pe rând; cartonașele noi încep mereu din ebraică în înțeles)"))),
     dir("recognize", tr("Hebrew to meaning", "Din ebraică în înțeles"), tr("See the Hebrew, remember what it means", "Vezi ebraica, îți amintești ce înseamnă")),
     dir("recall", tr("Meaning to Hebrew", "Din înțeles în ebraică"), tr("See the meaning, remember the Hebrew", "Vezi înțelesul, îți amintești cuvântul ebraic")),
-    dir("listen", tr("Listening", "Ascultare"), tr("Hear the word, remember what it means", "Auzi cuvântul, îți amintești ce înseamnă"))));
+    dir("listen", tr("Listening", "Ascultare"), tr("Hear the word, remember what it means", "Auzi cuvântul, îți amintești ce înseamnă"))),
+    h("section", null, h("div", { class: "field" }, h("span", null, tr("Pick the meaning and Flip through cards show first", "Alege înțelesul și Răsfoiește cartonașe arată întâi")),
+      seg(s, "practiceSide", [["he", tr("The Hebrew", "Ebraica")], ["mean", tr("The meaning", "Înțelesul")], ["both", tr("Both, taking turns", "Pe rând")]]))));
   page.append(rv);
 
   // ---------------- shortcuts
@@ -195,6 +197,7 @@ function render() {
     [R, "[ ]", tr("previous and next chapter", "capitolul anterior și următor")], [R, tr("Shift + click", "Shift + clic"), tr("select a phrase", "selectează o expresie")],
     [R, "Esc", tr("close the word panel", "închide panoul cuvântului")], [V, tr("Space or click", "Spațiu sau clic"), tr("show the answer, then Good", "arată răspunsul, apoi Bine")],
     [V, "1 2 3 4", tr("Again, Hard, Good, Easy", "Din nou, Greu, Bine, Ușor")], [V, "P", tr("play the word again", "citește cuvântul din nou")],
+    [V, "H", tr("a hint before the answer (press again for more)", "un indiciu înainte de răspuns (apasă din nou pentru mai mult)")],
     [tr("Anywhere", "Oriunde"), tr("Alt + 1 to 8", "Alt + 1 până la 8"), tr("switch tabs", "schimbă fila")]];
   page.append(h("table", { class: "words-table desktop-only", style: { maxWidth: "640px" } }, h("tbody", null, keys.map(([where, k, what]) =>
     h("tr", null, h("td", { class: "small muted" }, where), h("td", null, h("span", { class: "kbd" }, k)), h("td", null, what))))));
@@ -301,7 +304,7 @@ function phoneAudio(s) {
     h("div", { class: "field" }, h("span", null, tr("Slow speed", "Viteza lentă")),
       seg(s, "slowRate", [["-25%", tr("A bit slower", "Puțin mai rar")], ["-35%", tr("Slower", "Mai rar")], ["-50%", tr("Much slower", "Mult mai rar")]])),
     h("div", { class: "field" }, h("span", null, tr("Read the Divine Name יהוה as", "Numele divin יהוה se citește")),
-      seg(s, "divineName", [["adonai", tr("Adonai (traditional, like “LORD”)", "Adonai (tradițional, ca „Domnul”)")], ["yahweh", "Yahweh"], ["as-written", tr("As written", "Cum e scris")]])),
+      seg(s, "divineName", [["adonai", tr("Adonai (traditional, like “LORD”)", "Adonai (tradițional, ca „Domnul”)")], ["yahweh", tr("{Yahweh}", "{Yahweh}")], ["as-written", tr("As written", "Cum e scris")]])),
     h("label", { class: "check" }, h("input", { type: "checkbox", checked: s.autoplayWord, onchange: (e) => set("autoplayWord", e.target.checked) }), h("span", null, trt("Say each word when I click it", "Citește fiecare cuvânt când apăs pe el", "Say each word when I tap it"))),
     h("div", { class: "row", style: { marginTop: "10px" } },
       h("button", { class: "btn", type: "button", onclick: () => testAudio() }, icon("speaker"), tr("Test audio: שָׁלוֹם", "Probă: שָׁלוֹם")),

@@ -33,8 +33,10 @@ import java.util.zip.Inflater;
  * Keep the two in step: a change to an endpoint in server.py belongs here too.
  */
 final class Api {
-    static final String VERSION = "2.2.1";
-    static final long MAX_BODY = 64L * 1024 * 1024;
+    static final String VERSION = "2.4.0";
+    // userdata.json is a few MB at most. Lower than the desktop's 64 MB: the phone holds the body, its text and the parsed
+    // data in memory at the same time.
+    static final long MAX_BODY = 24L * 1024 * 1024;
 
     /** A request the app should not have sent: answered with 400, like KeyError/ValueError in server.py. */
     static final class BadRequest extends RuntimeException {
@@ -890,8 +892,12 @@ final class Api {
         List<Object> ids = new ArrayList<Object>();
         for (Object[] r : morphCodes()) if (r[1] != null && rx.matcher((String) r[1]).find()) ids.add(asLong(r[0]));
         if (ids.isEmpty()) return ok(Json.obj("items", new ArrayList<Object>()));
-        String where = "mid IN (" + placeholders(ids.size()) + ")";
-        List<Object> args = new ArrayList<Object>(ids);
+        // The ids are written into the query as numbers: they come from the database itself (never from the request),
+        // and a pattern can match over a thousand codes, more than the 999 "?" that SQLite allows on Android 7 to 11.
+        StringBuilder in = new StringBuilder();
+        for (Object id : ids) in.append(in.length() == 0 ? "" : ",").append(asLong(id));
+        String where = "mid IN (" + in + ")";
+        List<Object> args = new ArrayList<Object>();
         if (!isBlank(book)) {
             where += " AND verse IN (SELECT id FROM verses WHERE book=?)";
             args.add((long) intOf(book));

@@ -1,5 +1,6 @@
 // Hebrew text helpers: pointing, transliteration styles, morphology decoding, affix names.
 import { store } from "./store.js";
+import { translitStyle, roSpell, keepFinalH, tl, marks } from "./i18n.js";
 
 const isRo = () => store.settings.lang === "ro";
 
@@ -49,39 +50,41 @@ export function morphRole(w, i) {
 }
 
 // ------------------------------------------------------------------ transliteration
-// Source format (STEPBible): syllables split by ".", stressed syllable has a capital letter,
-// "'" marks aleph/ayin, "ch" = chet, "kh" = khaf, "tz" = tsadi, "sh" = shin.
+// Two sources, both in English style with syllables split by ".":
+// - the words of the text (TAHOT): the stressed syllable has a capital letter, "'" marks alef/ayin, "ch" = chet,
+//   "kh" = khaf, "tz" = tsadi, "sh" = shin, "f" = fe, "k" = qof, "w" only in Yah.weh;
+// - the dictionary (lemmas): all small letters, "ph" = fe, "q" = qof, "ts" = tsadi, no alef/ayin marks.
+// Romanian spelling (i18n.js, roSpell) turns all of these into ș, ț, h, f, k, i, v and drops the h of a silent final ה.
 
-function romanianize(s) {
-  return s
-    .replace(/sh/g, "ș")
-    .replace(/tz/g, "ț")
-    .replace(/ch/g, "h")
-    .replace(/kh/g, "h")
-    .replace(/g([ei])/g, "gh$1")
-    .replace(/yi/g, "i").replace(/y/g, "i");
-}
-
+// heb (opts.heb): the Hebrew the transliteration spells, so a final ה with mappiq (לָהּ) keeps its h in Romanian.
 export function translit(raw, settings, opts = {}) {
   if (!raw) return "";
   raw = String(raw);
-  if (/\s/.test(raw.trim())) return raw.trim().split(/\s+/).map(x => translit(x, settings, opts)).join(" ");
   // Romanian spelling (ș, ț, h) or English (sh, tz, ch): as chosen in Settings, or the interface language
   const style = opts.style || translitStyleOf(settings);
+  if (/\s/.test(raw.trim())) {
+    const words = raw.trim().split(/\s+/);
+    const keep = style === "ro" && opts.heb ? keepFinalH(opts.heb, words.length, false) : () => false;
+    return words.map((x, i) => translit(x, settings, Object.assign({}, opts, { heb: null, keepH: keep(i) }))).join(" ");
+  }
   const dots = opts.dots !== undefined ? opts.dots : settings.translitDots;
   const stressMode = opts.stress || settings.translitStress || "bold";
   let s = raw.replace(/\//g, "").replace(/-$/, "");
+  if (style === "ro") {
+    const parts = s.split("-").length;
+    const keep = opts.keepH !== undefined && opts.keepH !== null ? (i) => i === parts - 1 && opts.keepH
+      : opts.heb ? keepFinalH(opts.heb, parts, true) : () => false;
+    s = roSpell(s, true, keep);
+  }
   const sylls = s.split(".").filter(x => x !== "");
   // The source also capitalizes proper names and secondary stress (Yis.ra.'El, vai.Yo.me.Ru), so only the last
   // capitalized syllable is the main stress.
   let stressIdx = -1;
-  sylls.forEach((syl, i) => { if (/[A-Z]/.test(syl)) stressIdx = i; });
+  sylls.forEach((syl, i) => { if (/\p{Lu}/u.test(syl)) stressIdx = i; });
   const out = sylls.map((syl, i) => {
     const stressed = i === stressIdx;
     let t = syl.toLowerCase();
-    if (style === "ro") t = romanianize(t);
-    else if (style === "en") t = t.replace(/'/g, "ʼ");
-    if (style === "ro") t = t.replace(/'/g, "ʼ");
+    if (style === "en") t = t.replace(/'/g, "ʼ");
     return { t, stressed };
   });
   if (opts.html === false) {
@@ -97,9 +100,7 @@ export function translit(raw, settings, opts = {}) {
 
 // The transliteration spelling: Settings, Reading can set it apart from the interface language.
 export function translitStyleOf(settings) {
-  const v = settings && settings.translitStyle;
-  if (v === "en" || v === "ro") return v;
-  return settings && settings.lang === "ro" ? "ro" : "en";
+  return translitStyle(settings);
 }
 
 export function escapeHtml(s) {
@@ -139,6 +140,12 @@ const PART_T = { a: ["affirmation", "de afirmație"], d: ["definite article", "a
 
 const pick = (pair) => pair ? (isRo() ? pair[1] : pair[0]) : "";
 
+// Stem names are Hebrew words too: Niphal, Hiphil, Hithpael in English spelling; Nifal, Hifil, Hitpael in Romanian.
+function stemName(s) {
+  const [name, ...more] = String(s).split(" ");
+  return (translitStyle() === "ro" ? tl(name) : name) + (more.length ? " " + pick(["passive", "pasiv"]) : "");
+}
+
 export function parseMorph(code) {
   if (!code) return { pos: "", label: "" };
   const aram = code[0] === "A";
@@ -158,7 +165,7 @@ export function parseMorph(code) {
   };
   if (p === "V") {
     const stems = aram ? A_STEMS : H_STEMS;
-    out.stem = stems[rest[0]] || rest[0];
+    out.stem = stemName(stems[rest[0]] || rest[0]);
     const tail = rest.slice(2);
     // In this data "c" followed by a person ("Vqc1cs", וְאֶתְּנָה) is the cohortative; "c" alone is the infinitive construct.
     const conjKey = rest[1] === "c" && /^[123]/.test(tail) ? "h" : rest[1];
@@ -242,7 +249,7 @@ const AFFIX_DATA = {
   H9004: [["like, as", "Preposition kaf."], ["ca, precum", "Prepoziția kaf."]],
   H9005: [["to, for", "Preposition lamed. Also marks 'of' in titles: 'of David'."], ["la, pentru", "Prepoziția lamed. În titluri înseamnă și „al”: „al lui David”."]],
   H9006: [["from", "Preposition mem, short for מִן. Also 'than' in comparisons."], ["din, de la", "Prepoziția mem, scurtă pentru מִן. În comparații înseamnă „decât”."]],
-  H9007: [["which, that", "Relative particle shin."], ["care, ce", "Particula relativă șin."]],
+  H9007: [["which, that", "Relative particle {shin}."], ["care, ce", "Particula relativă {shin}."]],
   H9008: [["(question)", "He at the start of a yes/no question."], ["(întrebare)", "He la începutul unei întrebări cu da sau nu."]],
   H9009: [["the", "Definite article. English puts it before the word, like Hebrew."], ["-ul, -a (articol)", "Articolul hotărât. Româna îl pune la sfârșit: pământ-ul."]],
   H9010: [["the (Aramaic)", "Aramaic article, written at the end of the word."], ["-ul (aramaică)", "Articolul aramaic, scris la sfârșitul cuvântului, ca în română."]],
@@ -284,10 +291,28 @@ const AFFIX_DATA = {
 // [short meaning, explanation] of a prefix or suffix tag in the interface language, or null
 export function affix(tag) {
   const k = (tag || "").slice(0, 5);
-  return AFFIX_DATA[k] ? pick(AFFIX_DATA[k]) : null;
+  return AFFIX_DATA[k] ? pick(AFFIX_DATA[k]).map(marks) : null;
 }
 
 export function isAffix(tag) { return /^H9\d{3}/.test(tag || ""); }
+
+// A prefix or ending as it stands in a word. A preposition whose vowel also holds the article (code "HRd": לַ, בַּ, כַּ)
+// means "to the", "in the", "like the", which the plain tag doesn't say.
+export function affixIn(tag, code) {
+  const af = affix(tag);
+  if (!af) return null;
+  if (String(code || "").slice(1) === "Rd") {
+    return [af[0] + pick([" + the", " + articolul"]), af[1] + " " + pick(["Its vowel also holds the article “the”.", "Vocala lui conține și articolul hotărât."])];
+  }
+  return af;
+}
+
+// A verb form in one line: "Qal consecutive imperfect, 3rd person masculine singular".
+export function verbLabel(code) {
+  const m = parseMorph(code);
+  if (m.posCode !== "V") return m.label;
+  return [`${m.stem} ${m.conj}`, (m.parts || []).join(" ")].filter(Boolean).join(", ");
+}
 
 // ------------------------------------------------------------------ audio text
 // The Divine Name is traditionally read aloud as Adonai (Cornilescu: "Domnul").

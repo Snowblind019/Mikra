@@ -12,7 +12,7 @@ Hover a word on either side and its match lights up on the other side. Click a H
 - how the KJV and Cornilescu translate it
 - every verse it appears in
 
-Learn with flashcards (spaced repetition), ready-made word decks, practice games, the alphabet in print and handwriting, typing practice, a 64-lesson grammar course, and saved verses you learn by heart.
+Learn with flashcards (spaced repetition), ready-made word decks, practice games (including parsing verbs and reading prefixes and endings), a word-by-word breakdown of any verse, the alphabet in print and handwriting, typing practice, a 64-lesson grammar course with quizzes on real verses, and saved verses you learn by heart and repeat on a schedule.
 
 The whole app works in **English or Romanian**. Switch in Settings or from the top bar.
 
@@ -83,7 +83,7 @@ Settings, Audio in Mikra shows whether a Hebrew voice was found and has a button
 
 ### Your progress on the phone
 
-Progress is saved inside the app, with a copy each day. **Uninstalling the app deletes it**, so before you uninstall (or move to a new phone), use My words, Back up everything. The file goes to the Downloads folder. Restore backup in My words reads it back, on the phone or on a computer: the file is the same on both.
+Progress is saved inside the app, with a copy each day. **Uninstalling the app deletes it**, so before you uninstall (or move to a new phone), use My words, Back up everything. (If the phone's own Android backup is turned on, it also keeps a copy of your progress, and only that, but don't count on it.) The file goes to the Downloads folder. Restore backup in My words reads it back, on the phone or on a computer: the file is the same on both.
 
 Updates install over the old version and keep your progress, as long as they are signed with the same key (see below).
 
@@ -103,6 +103,7 @@ How it works: the APK holds the `web/` folder and the database. A small Java ser
 ## Language, Bible and script
 
 - **Interface language:** English or Romanian. Everything follows the language: menus, lessons, word meanings, and how Hebrew is spelled in Latin letters (English sh, tz, ch; Romanian ș, ț, h).
+- **Transliteration spelling:** Settings, Reading can set the Latin spelling of Hebrew apart from the language. It covers every Hebrew word in the app, also inside English text: the pronunciation lines, letter and vowel names, grammar terms and the words quoted in the lessons. Romanian spelling writes Hebrew the way Romanian Bibles and books do: ș, ț, h, f, k, i, v, gh before e and i, and no h for a silent ה at the end of a word (to·ra, Iahve). So the letters are Kuf, Țadi, Het, Șin, the stems Kal, Nifal, Hifil, Hitpael, and נֶפֶשׁ is ne·feș.
 - **Bible next to the Hebrew:** the KJV or Cornilescu. It switches to match the language, and you can still pick the other one with the KJV / Cornilescu buttons in the reader.
   - KJV words are linked to the Hebrew through the Strong's numbers in the KJV text.
   - The words the KJV translators added are in italics, as in a printed KJV.
@@ -119,6 +120,7 @@ Romanian meanings: the 1,000 most common words have meanings written by hand. Ev
 - where to continue reading
 - reviews due
 - a word of the day
+- the next grammar lesson, and the saved verses to repeat today
 - the easiest chapters for you
 - a "Start here" path from the alphabet to reading and memorizing, which ticks itself off as you go
 
@@ -133,33 +135,45 @@ Romanian meanings: the 1,000 most common words have meanings written by hand. Ev
 - Each verse has buttons to:
   - listen, or listen slowly
   - play it word by word with highlighting, to read along and repeat
+  - take it apart: every word split into its prefixes, main word and endings, with what each part means, its grammar, its sound and its meaning in the verse, plus a button that adds the verse's new words to review
   - save it to learn by heart
   - fix the word links
   - copy it
-- Under each chapter is its word list, most useful words first.
+- Under each chapter is its word list, most useful words first, with a button to practise those words right away.
+- In the word panel, "Root and related words" can add the whole word family to review at once.
 
 **Review:**
 - Flashcards scheduled with FSRS spaced repetition (Again, Hard, Good, Easy). Click the card to see the answer.
+- **Hint** (or H) before the answer gives a little help, one step at a time: the sound, then the verse with the word's translation left out (Hebrew → meaning); the first letter and how many letters follow, then the sound (meaning → Hebrew); the written word (listening).
+- The answer side has your note for the word, which you can write or change right there. A word forgotten four times or more is marked "Tricky word", and its note opens with a tip to write a memory hook.
+- Under Start review you choose what the flashcards ask: Hebrew → meaning, meaning → Hebrew, listening, or any mix (they take turns). New cards always start Hebrew → meaning.
 - A study day runs from 4 a.m. to 4 a.m., as in Anki. A session that goes past midnight still counts as that evening, and cards you grade late in the evening come back the next day, not a few minutes later.
 - **Word decks** to add many words at once. New cards come in a few each day (Settings, Review). The decks:
   - the 100, 500, 1,000 and 2,000 most common words
   - every word used 10+ times
   - names
   - all the words of one book
-- Practice games that don't change the schedule: pick the meaning, listening, hear and repeat, spelling, words in their verse, matching pairs, free flipping.
+- Practice games that don't change the schedule: pick the meaning, listening, hear and repeat, spelling, words in their verse, matching pairs, free flipping, and two that teach reading the forms:
+  - **Parse the verb**: a verb form from the Bible, and you choose its stem, tense and person. The wrong answers each change one thing (the person, the tense or the stem), so you learn to look at each part. The answer explains the form and links to its grammar lesson and its verse.
+  - **Prefixes and endings**: a word from the chapter you read last with one part marked (וְ, הַ, בְּ, ־וֹ, ־ָם…), and you choose what it means. The answer shows the whole word part by part.
+- Practice words can also come from **My hardest words**: the cards you forgot most often.
+- At the end of a game, the words you missed are listed, to add to review or to practise again on their own.
+- “Show first” picks what Pick the meaning and Flip through cards show: only the Hebrew (you find the meaning), only the meaning (you find the Hebrew), or both taking turns.
 - After you answer, the answer stays on screen. Click anywhere (or press Space) to go on.
 
 **My words:**
 - every card and known word, with search, pause, reset, delete
 - export to Anki, and backup and restore
-- **Saved verses** with a memorizing mode that hides more of the verse as you learn it
+- **Saved verses** with a memorizing mode that hides more of the verse as you learn it, and **Build it**, where you put the verse together from its shuffled words
+- A verse you have learned comes back on the flashcard schedule (Repeat the verses that are due), so it stays learned
+- a filter for tricky cards (forgotten four times or more)
 
 **Alphabet:**
 - all letters in print and handwriting, with sounds compared to English or Romanian, Bible examples, look-alikes and number values
 - vowels, other marks, a syllable builder
 - writing practice
 - **Keyboard**: the Israeli layout and a typing drill
-- drills, including print versus cursive
+- drills, including print versus cursive; in each drill, “Show” picks which side the questions show (the letter or its name, the letter or its sound, handwritten or print, the Hebrew word or its meaning, or both taking turns)
 
 **Grammar:** a course of 64 lessons in six parts, from beginner to advanced:
 - *Getting started:* how a word is built, reading a verse step by step, the vowel signs, shva and dagesh, the prefixes, the article, the object marker, the small words you see everywhere.
@@ -169,11 +183,14 @@ Romanian meanings: the 1,000 most common words have meanings written by hand. Ev
 - *Building sentences:* verbless sentences, word order, אֲשֶׁר, the many jobs of כִּי, “to have”, time expressions, the infinitive and the participle in use, conditions, purpose, oaths and emphasis, direct speech, the directional ending.
 - *Reading the text:* accents, pausal forms, poetry, the Divine Name and Ketiv/Qere, Aramaic, a first look at Aramaic grammar, and a one-page summary of all prefixes and endings.
 
-Every lesson is written in both languages and quotes real verses, each with its KJV or Cornilescu rendering and a link into the reader. Most lessons end with “Find it in the Bible”, which pulls random verses that use the form just taught, from any book you choose. Lessons you mark as done are remembered.
+Every lesson is written in both languages and quotes real verses, each with its KJV or Cornilescu rendering and a link into the reader. Most lessons end with “Find it in the Bible”, which pulls random verses that use the form just taught, from any book you choose. **Quiz me** turns those verses into a short test: you tap the word in each verse that shows the form. With 80% right, the lesson can be marked as done from there. Lessons you mark as done are remembered.
 
 **Progress:**
 - how much of the Old Testament is made of words you know
+- how many reviews you remembered in the last 30 days, and the verses you know by heart
 - this week's study time
+- the flashcard reviews coming up in the next two weeks
+- the words you find hardest, with a button to practise them
 - the easiest chapters for you, and milestones for the most common words
 - review history, a suggested reading path, and coverage for every book and chapter
 

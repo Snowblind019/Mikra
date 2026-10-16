@@ -60,7 +60,8 @@ export function mount(el) {
 
 // Settings that don't change the reader's text: sizes are CSS variables, the rest belong to other tabs.
 const NO_RERENDER = new Set(["heSize", "roSize", "theme", "themeLight", "themeDark", "themeOverrides", "heFont", "goalMinutes",
-  "goalReviews", "voice", "audioEngine", "slowRate", "newPerDay", "reviewDirections", "autoplayWord"]);
+  "goalReviews", "voice", "audioEngine", "slowRate", "newPerDay", "reviewDirections", "autoplayWord",
+  "practiceSide", "drillSides"]);
 
 function onPhoneChange() {
   if (!chap) return;
@@ -332,7 +333,7 @@ export async function load(b, c, v, w, fromPanel) {
   if (seq !== loadSeq) return;
   // the word panel's arrows follow the selected word, which is gone in the new chapter
   const open = panel.kind();
-  if (!fromPanel && (open === "word" || open === "phrase")) panel.close();
+  if (!fromPanel && (open === "word" || open === "phrase" || open === "verse")) panel.close();
   chap = { book: b, ch: c, raw: data.verses, en: data.en, glossRo: data.glossRo || {}, verses: [] };
   selected = null; phrase = null; editing = null;
   store.data.pos = { b, c, v: v || null };
@@ -491,7 +492,7 @@ function renderVerse(vs, known) {
       return el;
     });
     wordEl.append(hx);
-    if (s.interTranslit) wordEl.append(h("span", { class: "il tr", html: translit(wordTranslit(w, s), s) }));
+    if (s.interTranslit) wordEl.append(h("span", { class: "il tr", html: translit(wordTranslit(w, s), s, { heb: w.text }) }));
     if (s.interGloss) wordEl.append(h("span", { class: "il" }, wordMeaning(vs, wi)));
     vs.wordEls.push(wordEl); vs.morphEls.push(mEls);
     hc.append(wordEl);
@@ -504,7 +505,7 @@ function renderVerse(vs, known) {
         if (ch === "־") hc.append(h("span", { class: "punct" }, display(ch, s)));
         else if (ch === "׃") hc.append(h("span", { class: "punct" }, ch));
         else if (ch === "׀") hc.append(h("span", { class: "punct" }, s.cantillation ? " " + ch : ""));
-        else if (ch === "ס" || ch === "פ") hc.append(h("span", { class: "punct para", title: ch === "פ" ? tr("Open paragraph mark (petucha)", "Semn de paragraf deschis (petuha)") : tr("Closed paragraph mark (setuma)", "Semn de paragraf închis (setuma)") }, ch));
+        else if (ch === "ס" || ch === "פ") hc.append(h("span", { class: "punct para", title: ch === "פ" ? tr("Open paragraph mark ({petucha})", "Semn de paragraf deschis ({petucha})") : tr("Closed paragraph mark (setuma)", "Semn de paragraf închis (setuma)") }, ch));
         else if (/[\u05D0-\u05EA]/.test(ch)) hc.append(space ? " " : "", h("span", { class: "punct" }, display(ch, s)));
         space = false;
       }
@@ -521,6 +522,7 @@ function renderVerse(vs, known) {
     iconBtn("speaker", tr("Listen", "Ascultă"), () => playVerse(vs)),
     iconBtn("slow", tr("Listen slowly", "Ascultă rar"), () => playVerse(vs, true)),
     iconBtn("follow", tr("Word by word, with highlighting", "Cuvânt cu cuvânt, cu evidențiere"), () => followAlong(vs)),
+    iconBtn("layers", tr("Take this verse apart, word by word", "Desface versetul, cuvânt cu cuvânt"), () => breakdown(vs)),
     vs.saveBtn,
     iconBtn("link", tr("Fix word links in this verse", "Corectează legăturile din acest verset"), () => startEdit(vs.vi)),
     iconBtn("copy", tr("Copy verse", "Copiază versetul"), () => copyVerse(vs)),
@@ -616,7 +618,9 @@ function fillVocab(body, res) {
     toast(tr("Added ", "Am adăugat ") + trn(n, "word", "words", "cuvânt", "cuvinte") + tr(" to review", " la recapitulare"));
     refreshWordMarks();
   } }, icon("plus"), tr(`Add all ${notCarded.length} new words`, `Adaugă toate cele ${notCarded.length} ${notCarded.length === 1 ? "cuvânt nou" : roDe(notCarded.length) + "cuvinte noi"}`));
-  body.append(h("div", { class: "row", style: { marginBottom: "10px" } }, addTop, addAll,
+  const practice = h("button", { class: "btn", type: "button", title: tr("A quick game with the words of this chapter, before or after you read it", "Un joc scurt cu cuvintele acestui capitol, înainte sau după ce îl citești"),
+    onclick: () => ctx.navigate("review", { practice: "choice", source: "chapter" }) }, icon("cards"), tr("Practise these words", "Exersează cuvintele"));
+  body.append(h("div", { class: "row", style: { marginBottom: "10px" } }, addTop, addAll, practice,
     h("span", { class: "small muted" }, tr("The most common words in the whole Old Testament come first, so every word you learn pays off often.",
       "Întâi vin cuvintele cele mai folosite din tot Vechiul Testament, ca fiecare cuvânt învățat să te ajute des."))));
   const table = h("table", { class: "vocab-table" },
@@ -630,7 +634,7 @@ function fillVocab(body, res) {
     const hasCard = store.hasCard("L:" + it.key);
     tb.append(h("tr", { style: isKnown ? { opacity: ".55" } : null },
       h("td", { class: "he" + heClass(), lang: "he", style: { cursor: "pointer" }, onclick: () => panel.openLemma(it.key) }, heText(it.hebrew)),
-      h("td", { html: translit(lemmaTranslit(it.translit, it.key, store.settings), store.settings) }),
+      h("td", { html: translit(lemmaTranslit(it.translit, it.key, store.settings), store.settings, { heb: it.hebrew }) }),
       h("td", null, meaning(it)),
       h("td", { class: "small muted" }, fmtInt(it.freq)),
       h("td", { class: "small muted" }, String(it.inChapter)),
@@ -644,10 +648,11 @@ function fillVocab(body, res) {
   if (list.length > 80) body.append(h("p", { class: "small muted" }, tr(`Showing 80 of ${list.length}.`, `Se arată 80 din ${list.length}.`)));
 }
 
-// A flashcard for a dictionary word from this chapter, with its first verse here as context.
-function cardFromItem(it) {
+// A flashcard for a dictionary word from this chapter, with its first verse here as context (or verse vi, if it is there).
+function cardFromItem(it, vi) {
   let ctxRef = null, roCtx = "", enCtx = "";
-  for (const vs of chap.verses) {
+  const order = vi !== undefined && chap.verses[vi] ? [chap.verses[vi], ...chap.verses] : chap.verses;
+  for (const vs of order) {
     const wi = vs.words.findIndex(w => w.lemma === it.key);
     if (wi >= 0) {
       ctxRef = { b: chap.book, c: chap.ch, v: vs.v, w: wi, form: vs.words[wi].text };
@@ -718,7 +723,7 @@ function showTip(anchor, vs, wi) {
   const s = store.settings;
   const w = vs.words[wi];
   if (s.interTranslit && s.interGloss && (s.helpScope !== "unknown" || anchor.classList.contains("help"))) { tipEl.style.display = "none"; return; }
-  tipEl.innerHTML = `<div style="font-size:15px">${translit(wordTranslit(w, s), s)}</div><div class="muted">${escapeHtml(wordMeaning(vs, wi))}</div>`;
+  tipEl.innerHTML = `<div style="font-size:15px">${translit(wordTranslit(w, s), s, { heb: w.text })}</div><div class="muted">${escapeHtml(wordMeaning(vs, wi))}</div>`;
   tipEl.style.display = "block";
   const r = anchor.getBoundingClientRect();
   const tw = tipEl.offsetWidth;
@@ -764,7 +769,7 @@ function markSelected() {
   }
 }
 
-export function selectWord(vi, w) {
+export function selectWord(vi, w, back) {
   if (!chap) return;
   const vs = chap.verses[vi];
   if (!vs || !vs.words[w]) return;
@@ -778,6 +783,7 @@ export function selectWord(vi, w) {
     enLinked: linkedText(vs.en, w),
     glossRo: chap.glossRo[vs.words[w].lemma] || "",
     onNextWord: () => moveSel(1), onPrevWord: () => moveSel(-1),
+    back,
   });
   if (store.settings.autoplayWord) speak(speakableWord(vs.words[w], store.settings));
   if (isPhone()) keepAboveSheet(vs.wordEls[w]);
@@ -791,6 +797,35 @@ function keepAboveSheet(el) {
     const sheetTop = panelEl.getBoundingClientRect().top || (m.top + m.height * 0.38);
     if (r.top < m.top + 48 || r.bottom > sheetTop - 8) mainEl.scrollTop += r.top - (m.top + 56);
   });
+}
+
+// "Take this verse apart": the word panel shows the whole verse, word by word and part by part.
+function breakdown(vs) {
+  if (!chap || !vs.el.isConnected) return;
+  clearSelection();
+  for (const el of chapEl.querySelectorAll(".verse.tools-open")) el.classList.remove("tools-open");
+  const myChap = chap;
+  panel.openVerse({
+    book: chap.book, ch: chap.ch, v: vs.v, vs,
+    sideName: bibleName(vs.side.ver), sideText: vs.side.text, sideLang: vs.side.ver === "kjv" ? "en" : "ro",
+    meanings: vs.words.map((_, wi) => wordMeaning(vs, wi)),
+    isNew: (wi) => isUnknownWord(vs.words[wi], store.knownKeys()) && !store.hasCard("L:" + vs.words[wi].lemma),
+    // back to the verse as it is now: a change of View redraws the chapter, and the old verse element is gone
+    onWord: (wi) => { if (chap === myChap) selectWord(vs.vi, wi, () => { if (chap === myChap && chap.verses[vs.vi]) breakdown(chap.verses[vs.vi]); }); },
+    addNew: async () => {
+      const known = store.knownKeys();
+      const keys = [...new Set(vs.words.filter(w => w.extra.x !== "X" && isUnknownWord(w, known) && !store.hasCard("L:" + w.lemma)).map(w => w.lemma))];
+      if (!keys.length) return 0;
+      const brief = await api.post("lemma_brief", { keys });
+      if (chap !== myChap) return 0;
+      const n = store.addCards(keys.map(k => brief[k]).filter(Boolean).map(it => cardFromItem(it, vs.vi)));
+      refreshWordMarks();
+      return n;
+    },
+  });
+  vs.el.classList.add("current");
+  setTimeout(() => vs.el.classList.remove("current"), 1600);
+  if (isPhone()) keepAboveSheet(vs.el);
 }
 
 function selectPhrase(vi, a, b) {

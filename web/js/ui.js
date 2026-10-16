@@ -97,6 +97,8 @@ const ICONS = {
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/>',
   chevron: '<path d="M7 10l5 5 5-5"/>',
+  layers: '<path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/>',
+  hint: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3z"/>',
 };
 
 // Phone-size screen (the layout switches to the mobile one) and touch screen without a mouse.
@@ -168,6 +170,70 @@ export function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+// Random picks without the clumps of plain Math.random(): like dealing from a shuffled deck, every item comes up once
+// before any item comes up again, and a new round never starts with the item that ended the last one.
+// again(x) puts a missed item back a few turns later, so it is practised again soon but not right away. Only one
+// missed item waits at a time, so a run of wrong answers can't fill the drill with the same few items.
+export function deck(items, keyOf = (x) => x) {
+  let all = items.slice();
+  let queue = [];
+  let last;
+  const pending = new Set();
+  const same = (a, b) => a !== undefined && b !== undefined && keyOf(a) === keyOf(b);
+  // deal one more round onto the end of the queue
+  const refill = () => {
+    const round = shuffle(all);
+    const prev = queue.length ? queue[queue.length - 1] : last;
+    if (round.length > 1 && same(round[0], prev)) {
+      const j = 1 + Math.floor(Math.random() * (round.length - 1));
+      [round[0], round[j]] = [round[j], round[0]];
+    }
+    queue = queue.concat(round);
+  };
+  return {
+    next() {
+      if (!all.length) return undefined;
+      if (!queue.length) refill();
+      last = queue.shift();
+      pending.delete(keyOf(last));
+      return last;
+    },
+    again(x, after = 3) {
+      if (all.length < 3 || pending.size) return;
+      const at = after + Math.floor(Math.random() * 3);
+      while (queue.length < at + 2) refill();
+      const k = keyOf(x);
+      if (queue.slice(0, at + 2).some(y => keyOf(y) === k)) return; // already coming up soon
+      queue.splice(at, 0, x);
+      pending.add(k);
+    },
+    get size() { return all.length; },
+  };
+}
+
+// A row of buttons where one is chosen: options [[value, label]], the current value, and what to do on a change.
+// The buttons are marked in place, so the page around them doesn't have to be rebuilt.
+export function choiceSeg(options, current, onPick, label) {
+  const seg = h("div", { class: "seg", role: "group", "aria-label": label || null, style: { flexWrap: "wrap" } });
+  for (const [v, l] of options) {
+    seg.append(h("button", { type: "button", class: v === current ? "on" : "", "aria-pressed": String(v === current), onclick: (e) => {
+      for (const b of seg.children) { b.classList.toggle("on", b === e.currentTarget); b.setAttribute("aria-pressed", String(b === e.currentTarget)); }
+      onPick(v);
+    } }, l));
+  }
+  return seg;
+}
+
+// One deck per name, kept while the app is open, so a drill picks up where it was after you leave and come back.
+// A new list of items (another book, more words) starts a new deck.
+const DECKS = new Map();
+export function deckFor(name, items, keyOf = (x) => x) {
+  const sig = items.length + ":" + items.slice(0, 3).map(keyOf).join("|") + ":" + items.slice(-2).map(keyOf).join("|");
+  let d = DECKS.get(name);
+  if (!d || d.sig !== sig) { d = { sig, deck: deck(items, keyOf) }; DECKS.set(name, d); }
+  return d.deck;
 }
 
 export function pct(a, b) {

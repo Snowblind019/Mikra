@@ -66,7 +66,7 @@ def synthesize(text, voice, rate, cache_dir):
     if not re.fullmatch(r"[+-][0-9]{1,2}%", rate or ""):
         rate = "+0%"
     os.makedirs(cache_dir, exist_ok=True)
-    key = hashlib.sha1(f"{voice}|{rate}|{text}".encode("utf-8")).hexdigest()
+    key = hashlib.sha1(f"{voice}|{rate}|{text}".encode("utf-8"), usedforsecurity=False).hexdigest()  # a cache file name only
     path = os.path.join(cache_dir, key[:2], key + ".mp3")
     if os.path.exists(path) and os.path.getsize(path) > 0:
         return path, None

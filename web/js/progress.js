@@ -1,10 +1,12 @@
 // Progress tab: coverage of the Old Testament, this week, easiest chapters, milestones, review history, reading path.
 
-import { api, store, errText, dayStreak } from "./store.js";
+import { api, store, errText, dayStreak, hardCards } from "./store.js";
 import { ctx } from "./ctx.js";
-import { h, clear, icon, fmtInt, pct, fmtPct, today, heText, heClass, trt } from "./ui.js";
-import { tr, trn, roDe, L, meaning } from "./i18n.js";
-import { studyDate } from "./fsrs.js";
+import { h, clear, icon, fmtInt, pct, fmtPct, today, heText, heClass, trt, dateKey } from "./ui.js";
+import { tr, trn, roDe, L, meaning, lang } from "./i18n.js";
+import { studyDate, dueAt } from "./fsrs.js";
+import { stripCantillation, speakableLemma, speakableText } from "./hebrew.js";
+import { speak } from "./audio.js";
 
 let root;
 let openBooks = new Set([0]);
@@ -50,17 +52,43 @@ async function render() {
   } catch (e) { page.append(h("p", { class: "muted" }, tr("Could not load coverage: ", "Nu am putut încărca acoperirea: ") + errText(e))); }
   if (seq !== renderSeq) return;
 
-  const kpi = (n, label) => h("div", { class: "stat" }, h("b", null, n), h("span", null, label));
+  const kpi = (n, label, title) => h("div", { class: "stat", title: title || null }, h("b", null, n), h("span", null, label));
+  const ret = retention();
+  const saved = Object.values(store.data.saved);
   kpis.append(
     kpi(fmtInt(known.size), tr("words known", "cuvinte știute")),
     kpi(cov ? fmtPct(cov.known, cov.total) + "%" : "–", tr("of all words in the OT are words you know", "din toate cuvintele din VT sunt cuvinte pe care le știi")),
     kpi(fmtInt(cards.length), tr("review cards", "cartonașe")),
+    kpi(ret ? fmtPct(ret.right, ret.n) + "%" : "–", tr("of reviews remembered (30 days)", "din repetări ținute minte (30 de zile)"),
+      ret ? tr(`${ret.right} of ${ret.n} reviews of cards you had learned before`, `${ret.right} din ${ret.n} ${roDe(ret.n)}repetări ale cartonașelor învățate deja`) : tr("Shown after 10 reviews", "Apare după 10 repetări")),
     kpi(fmtInt(chaptersRead), tr("chapters read", "capitole citite")),
+    kpi(fmtInt(saved.filter(x => x && x.mastered).length), tr("verses by heart", "versete pe de rost")),
     kpi(fmtInt(dayStreak()), tr("day streak", "zile la rând")));
 
   // this week
   page.append(h("h2", null, tr("This week", "Săptămâna aceasta")));
   page.append(weekStrip());
+
+  // what is coming up
+  page.append(h("h2", null, tr("Coming up", "Ce urmează")));
+  page.append(forecast(cards));
+
+  // the words forgotten most often
+  const hard = cards.filter(c => !c.suspended && (c.lapses || 0) >= 2).sort((a, b) => b.lapses - a.lapses || (b.difficulty || 0) - (a.difficulty || 0)).slice(0, 12);
+  if (hard.length) {
+    page.append(h("h2", null, tr("Words you find hardest", "Cuvintele cele mai grele pentru tine")));
+    page.append(h("p", { class: "muted" }, tr("The cards you forgot most often. A note with a memory hook helps (add it on the card's answer side), and so does practising them on their own.",
+      "Cartonașele uitate cel mai des. Te ajută o notiță cu un mic truc de memorare (o adaugi pe partea cu răspunsul) și exersarea lor separat.")));
+    const list = h("div", { class: "hard-list" });
+    for (const c of hard) {
+      list.append(h("div", { class: "hard-row" },
+        h("button", { class: "he-btn he" + heClass(), type: "button", lang: "he", title: tr("Listen", "Ascultă"), onclick: () => speak(c.kind === "lemma" ? speakableLemma(c.heb, c.key, store.settings) : speakableText(c.heb, store.settings)) }, heText(stripCantillation(c.heb))),
+        h("span", null, meaning(c)),
+        h("span", { class: "small muted" }, lang() === "ro" ? `uitat de ${c.lapses} ${roDe(c.lapses)}ori` : `forgotten ${c.lapses} times`)));
+    }
+    page.append(list, hardCards().length >= 4 ? h("div", { class: "row", style: { marginTop: "10px" } },
+      h("button", { class: "btn", type: "button", onclick: () => ctx.navigate("review", { practice: "choice", source: "hard" }) }, icon("cards"), tr("Practise my hardest words", "Exersează cuvintele grele"))) : null);
+  }
 
   // easiest chapters
   if (cov) {
@@ -176,6 +204,46 @@ async function render() {
     }
     page.append(list);
   }
+}
+
+// How many reviews of cards you had already learned were remembered in the last 30 days (null before 10 of them).
+function retention() {
+  const since = Date.now() - 30 * 86400000;
+  let n = 0, right = 0;
+  for (const x of store.data.log) {
+    if (!x || !(x.t >= since) || x.st === "new" || x.st === "learning") continue;
+    n++;
+    if (x.g >= 2) right++;
+  }
+  return n >= 10 ? { n, right } : null;
+}
+
+// Reviews due on each of the next 14 study days (cards already due count for today), as bars.
+function forecast(cards) {
+  const days = [];
+  const d = studyDate();
+  for (let i = 0; i < 14; i++) { days.push({ k: dateKey(d), n: 0, label: i === 0 ? tr("today", "azi") : String(d.getDate()) }); d.setDate(d.getDate() + 1); }
+  const index = new Map(days.map((x, i) => [x.k, i]));
+  const now = Date.now();
+  let later = 0;
+  for (const c of cards) {
+    if (c.suspended || c.state === "new") continue;
+    const t = dueAt(c);
+    const i = t <= now ? 0 : index.get(dateKey(studyDate(t)));
+    if (i === undefined) later++; else days[i].n++;
+  }
+  const max = Math.max(5, ...days.map(x => x.n));
+  const wrap = h("div", { class: "forecast", role: "img", "aria-label": tr("Reviews due in the next 14 days", "Repetări în următoarele 14 zile") });
+  for (const x of days) {
+    wrap.append(h("div", { class: "fc-day" + (x.k === today() ? " today" : ""), title: `${x.k}: ` + trn(x.n, "review", "reviews", "repetare", "repetări") },
+      h("b", null, x.n ? String(x.n) : ""), h("div", { class: "fc-bar" }, h("i", { style: { height: Math.round((x.n / max) * 100) + "%" } })), h("span", null, x.label)));
+  }
+  const newWaiting = cards.filter(c => !c.suspended && c.state === "new").length;
+  return h("div", null, wrap, h("p", { class: "small muted" }, tr(
+    `Flashcard reviews due each day for the next two weeks (${later} later). `,
+    `Repetările de cartonașe din fiecare zi a următoarelor două săptămâni (${later} mai târziu). `) +
+    trn(newWaiting, "new card is waiting", "new cards are waiting", "cartonaș nou așteaptă", "cartonașe noi așteaptă") +
+    tr(`, ${store.settings.newPerDay} a day.`, `, câte ${store.settings.newPerDay} pe zi.`)));
 }
 
 // Minutes and reviews for each of the last 7 days, against the daily goals.

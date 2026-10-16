@@ -89,7 +89,7 @@ export const SYNTAX = [
       tip(tr("A relative clause can also have no marker at all, especially in poetry: “the way I go” for “the way in which I go”. If a clause seems to hang on a noun with nothing joining them, try adding “which”.",
         "O propoziție relativă poate să nu aibă niciun semn, mai ales în poezie: „drumul merg” pentru „drumul pe care merg”. Dacă o propoziție pare agățată de un substantiv fără nimic care să le lege, încearcă să adaugi „care”.")),
     ],
-    search: "^HTr$", searchLabel: () => tr("asher", "așer"),
+    search: "^HTr$", searchLabel: () => tr("{asher}", "{asher}"),
   },
   {
     id: "ki",
@@ -235,8 +235,8 @@ export const SYNTAX = [
       pt("A participle is negated with «אֵין», not «לֹא»: «אֵינְךָ מֵשִׁיב» you are not returning (her). This is the same «אֵין» as “there is not”, with the subject attached as an ending.",
         "Un participiu se neagă cu «אֵין», nu cu «לֹא»: «אֵינְךָ מֵשִׁיב» tu nu o dai înapoi. E același «אֵין» ca „nu există”, cu subiectul lipit ca terminație."),
       ex("וְאִם־אֵינְךָ מֵשִׁיב", "ve·im ein·kha me·shiv", tr("and if you are not returning (her)", "și dacă nu o dai înapoi"), "and if thou restore her not", "Dar, dacă n-o dai înapoi", [0, 20, 7]),
-      tip(tr("In the reader, a participle is shown with the verb color but behaves like a noun in the sentence. The word panel labels it “participle” and gives the stem, so מֵבִיא is Hiphil (bringing) and מְבֹרָךְ is Pual (blessed).",
-        "În cititor, un participiu e arătat cu culoarea verbului, dar se poartă ca un substantiv în propoziție. Panoul cuvântului îl etichetează „participiu” și dă tulpina, așa că מֵבִיא e Hiphil (aducând) și מְבֹרָךְ e Pual (binecuvântat).")),
+      tip(tr("In the reader, a participle is shown with the verb color but behaves like a noun in the sentence. The word panel labels it “participle” and gives the stem, so מֵבִיא is {Hiphil} (bringing) and מְבֹרָךְ is Pual (blessed).",
+        "În cititor, un participiu e arătat cu culoarea verbului, dar se poartă ca un substantiv în propoziție. Panoul cuvântului îl etichetează „participiu” și dă tulpina, așa că מֵבִיא e {Hiphil} (aducând) și מְבֹרָךְ e Pual (binecuvântat).")),
     ],
     search: "^HTd/HV.r", searchLabel: () => tr("participles with the article, “the one who”", "participii cu articol, „cel care”"),
   },
@@ -368,8 +368,8 @@ export const SYNTAX = [
     id: "directional",
     title: () => tr("The “toward” ending and other tails", "Terminația „spre” și alte cozi"),
     body: () => [
-      pt("An unstressed «־ָה» on the end of a place word means “toward, to”: «אַרְצָה» to the ground, «מִצְרַיְמָה» to Egypt, «הַשָּׁמַיְמָה» toward the heavens, «שָׁמָּה» thither. It is an old case ending that survived only for direction. Don't confuse it with the feminine «־ָה», which is stressed: «אַרְצָה» AR-tzah toward the land, «תּוֹרָה» to-RAH law.",
-        "Un «־ָה» neaccentuat la sfârșitul unui cuvânt de loc înseamnă „spre, la”: «אַרְצָה» la pământ, «מִצְרַיְמָה» în Egipt, «הַשָּׁמַיְמָה» spre ceruri, «שָׁמָּה» într-acolo. E o terminație veche de caz care a supraviețuit numai pentru direcție. N-o confunda cu «־ָה» feminin, care e accentuat: «אַרְצָה» AR-ța spre țară, «תּוֹרָה» to-RA lege."),
+      pt("An unstressed «־ָה» on the end of a place word means “toward, to”: «אַרְצָה» to the ground, «מִצְרַיְמָה» to Egypt, «הַשָּׁמַיְמָה» toward the heavens, «שָׁמָּה» thither. It is an old case ending that survived only for direction. Don't confuse it with the feminine «־ָה», which is stressed: «אַרְצָה» {AR-tzah} toward the land, «תּוֹרָה» {to-RAH} law.",
+        "Un «־ָה» neaccentuat la sfârșitul unui cuvânt de loc înseamnă „spre, la”: «אַרְצָה» la pământ, «מִצְרַיְמָה» în Egipt, «הַשָּׁמַיְמָה» spre ceruri, «שָׁמָּה» într-acolo. E o terminație veche de caz care a supraviețuit numai pentru direcție. N-o confunda cu «־ָה» feminin, care e accentuat: «אַרְצָה» {AR-tzah} spre țară, «תּוֹרָה» {to-RAH} lege."),
       table([tr("Place", "Loc"), tr("Toward it", "Spre el"), tr("Meaning", "Înțeles")], [
         ["אֶרֶץ", "אַרְצָה", tr("to the ground, to the land", "la pământ, în țară")], ["מִצְרַיִם", "מִצְרַיְמָה", tr("to Egypt", "în Egipt")], ["שָׁמַיִם", "הַשָּׁמַיְמָה", tr("to the heavens", "spre cer")],
         ["שָׁם", "שָׁמָּה", tr("thither, to there", "într-acolo")], ["בַּיִת", "הַבַּיְתָה", tr("into the house, homeward", "în casă, spre casă")], ["סְדֹם", "סְדֹמָה", tr("to Sodom", "spre Sodoma")],

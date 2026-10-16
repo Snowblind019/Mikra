@@ -101,7 +101,8 @@ public final class MainActivity extends Activity {
     }
 
     private void load() {
-        if (web != null && Engine.ready()) web.loadUrl("http://127.0.0.1:" + Engine.port + "/__start?t=" + Engine.token);
+        String url = Engine.startUrl();
+        if (web != null && url != null) web.loadUrl(url);
     }
 
     private boolean isOwn(String url) {
@@ -116,6 +117,7 @@ public final class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
         s.setSupportMultipleWindows(false);
         s.setSupportZoom(false);
         w.addJavascriptInterface(new Bridge(), "MikraAndroid");
@@ -300,8 +302,14 @@ public final class MainActivity extends Activity {
         /** Saves a backup or word list in Downloads. Returns "ok:NAME", "picker" (the phone asks where) or "error:WHY". */
         @JavascriptInterface public String saveFile(String name, String mime, String text) {
             if (text == null) return "error:nothing to save";
-            name = name == null ? "mikra.txt" : name.replaceAll("[\\\\/:*?\"<>|\\x00-\\x1f]", "_");
-            if (mime == null || mime.isEmpty()) mime = "application/octet-stream";
+            // Only what the page saves: backups (.json) and word lists (.tsv). The name keeps its own extension only
+            // when it matches the type, and can't be hidden (".x") or reach outside Downloads.
+            String ext = "application/json".equals(mime) ? ".json" : "text/tab-separated-values".equals(mime) ? ".tsv"
+                : "text/csv".equals(mime) ? ".csv" : "text/plain".equals(mime) ? ".txt" : null;
+            if (ext == null) return "error:this kind of file can't be saved";
+            name = name == null ? "mikra" : name.replaceAll("[\\\\/:*?\"<>|\\x00-\\x1f]", "_").replaceAll("^[.\\s]+", "");
+            if (name.length() > 120) name = name.substring(0, 120);
+            if (!name.toLowerCase(Locale.ROOT).endsWith(ext)) name = (name.isEmpty() ? "mikra" : name) + ext;
             if (Build.VERSION.SDK_INT >= 29) {
                 try {
                     Uri coll = (Uri) Class.forName("android.provider.MediaStore$Downloads").getField("EXTERNAL_CONTENT_URI").get(null);

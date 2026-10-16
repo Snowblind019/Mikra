@@ -14,7 +14,9 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -68,6 +70,15 @@ final class Http {
     private volatile boolean closed;
     private int port;
     volatile boolean debug;
+    // Request headers: all of them together may not pass this size or count (the app's window sends about 1 KB).
+    static final int MAX_HEADER_BYTES = 32 * 1024;
+    static final int MAX_HEADER_LINES = 64;
+    // One-time start links. The window opens /__start?t=<one of these>; it is used up on the first visit and runs out
+    // after a minute, so a start link that ends up in a log or a screen reader is worth nothing. The key itself
+    // (the cookie) never appears in a link. keyStarts: the desktop test harness may also open it with the key.
+    private final Map<String, Long> startTokens = new HashMap<String, Long>();
+    private final SecureRandom random = new SecureRandom();
+    volatile boolean keyStarts;
 
     /** Where unexpected errors go (on the phone: logcat). Without one they are printed only when debug is on. */
     interface ErrorLog {
@@ -103,6 +114,28 @@ final class Http {
     }
 
     int port() { return port; }
+
+    /** A new one-time start link token (32 hex digits), valid for a minute. */
+    String newStartToken() {
+        byte[] r = new byte[16];
+        random.nextBytes(r);
+        StringBuilder b = new StringBuilder(32);
+        for (byte x : r) b.append(String.format("%02x", x & 0xff));
+        String t = b.toString();
+        long now = System.currentTimeMillis();
+        synchronized (startTokens) {
+            for (Iterator<Long> it = startTokens.values().iterator(); it.hasNext(); ) if (it.next() < now) it.remove();
+            startTokens.put(t, now + 60000);
+        }
+        return t;
+    }
+
+    private boolean useStartToken(String t) {
+        if (t == null) return false;
+        Long exp;
+        synchronized (startTokens) { exp = startTokens.remove(t); }
+        return exp != null && exp >= System.currentTimeMillis();
+    }
 
     /** Listens on the first free port from preferred on (a fixed port keeps the page's storage between runs). */
     synchronized int start(int preferred, int tries) throws IOException {
@@ -155,15 +188,16 @@ final class Http {
     }
 
     private void acceptLoop() {
+        long pause = 0; // after a failed accept (no file handles left, say): wait a little, longer each time, instead of spinning
         while (!closed) {
             final Socket s;
             try {
                 s = server.accept();
-            } catch (IOException e) {
-                if (closed) return;
-                continue;
+                pause = 0;
             } catch (Throwable e) {
-                if (closed) return;
+                if (closed || server.isClosed()) return;
+                pause = pause == 0 ? 50 : Math.min(1000, pause * 2);
+                try { Thread.sleep(pause); } catch (InterruptedException ie) { return; }
                 continue;
             }
             final Conn c = new Conn(s);
@@ -299,6 +333,7 @@ final class Http {
             line = readLine(in, 16384);
             if (line == null) return null;
         } while (line.isEmpty());
+        int total = line.length();
         String[] parts = line.split(" ");
         if (parts.length != 3 || !parts[2].startsWith("HTTP/")) throw new Close();
         Request r = new Request();
@@ -310,12 +345,18 @@ final class Http {
             String h = readLine(in, 16384);
             if (h == null) throw new Close();
             if (h.isEmpty()) break;
-            if (++count > 100) throw new Close();
+            total += h.length() + 2;
+            // a cap on all the headers together: 100 lines of 16 KB each, joined and copied over and over, could use up
+            // the app's memory
+            if (++count > MAX_HEADER_LINES || total > MAX_HEADER_BYTES) throw new Close();
             int i = h.indexOf(':');
             if (i <= 0) continue;
             String k = h.substring(0, i).trim().toLowerCase(Locale.ROOT);
             String v = h.substring(i + 1).trim();
             String old = r.headers.get(k);
+            // the headers the checks rely on must come once; two of them is a trick, not a browser
+            if (old != null && (k.equals("host") || k.equals("content-length") || k.equals("origin") || k.equals("sec-fetch-site")
+                || k.equals("content-type") || k.equals("transfer-encoding"))) throw new Close();
             r.headers.put(k, old == null ? v : (k.equals("cookie") ? old + "; " + v : old + ", " + v));
         }
         String t = r.target;
@@ -403,8 +444,10 @@ final class Http {
         String path = r.path;
         Map<String, String> q = parseQuery(r.query);
         if (path.equals("/__start")) {
-            // The app's own window opens this address with the secret; it gets a cookie the API checks from then on.
-            if (token != null && !same(token, q.get("t"))) { sendPlain(out, 403, keep); return; }
+            // The app's own window opens this address with a one-time start token; it gets the key as a cookie the API
+            // checks from then on.
+            String t = q.get("t");
+            if (token != null && !useStartToken(t) && !(keyStarts && same(token, t))) { sendPlain(out, 403, keep); return; }
             Map<String, String> h = new LinkedHashMap<String, String>();
             h.put("Location", "/");
             if (token != null) h.put("Set-Cookie", COOKIE + "=" + token + "; Path=/; HttpOnly; SameSite=Strict");
@@ -461,6 +504,10 @@ final class Http {
         } catch (Exception e) {
             report(r.method + " " + r.path + " failed", e);
             sendJson(out, 500, Json.obj("error", "server error"), keep);
+        } catch (OutOfMemoryError e) {
+            // a very large save on a phone with little memory: answer, so the page retries later, and close the connection
+            report(r.method + " " + r.path + " ran out of memory", e);
+            sendJson(out, 500, Json.obj("error", "out of memory"), false);
         }
     }
 

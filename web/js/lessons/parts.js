@@ -4,7 +4,7 @@
 import { store } from "../store.js";
 import { ctx } from "../ctx.js";
 import { h, icon, iconBtn, he } from "../ui.js";
-import { tr, tl, lang } from "../i18n.js";
+import { tr, tl, lang, marks } from "../i18n.js";
 import { speak } from "../audio.js";
 import { speakableText } from "../hebrew.js";
 
@@ -13,8 +13,9 @@ export { trt } from "../ui.js";
 
 // Example: Hebrew, transliteration (English style, shown in the chosen spelling), meaning,
 // how the KJV and Cornilescu render it, and the verse as [book, chapter, verse] (book 0 = Genesis).
+// Hebrew words in Latin letters inside any lesson text are marked {sha·lom} (see marks() in i18n.js).
 export const ex = (heb, trl, mean, kjv, ro, ref) => h("div", { class: "ex" },
-  h("span", { class: "t" }, tl(trl), (lang() === "ro" ? ro : kjv) ? h("span", { class: "muted" }, "   " + (lang() === "ro" ? "Cornilescu: " + ro : "KJV: " + kjv)) : null),
+  h("span", { class: "t" }, tl(trl, heb), (lang() === "ro" ? ro : kjv) ? h("span", { class: "muted" }, "   " + (lang() === "ro" ? "Cornilescu: " + ro : "KJV: " + kjv)) : null),
   h("span", { class: "he-ex" }, he(heb), " ", iconBtn("speaker", tr("Listen", "Ascultă"), () => speak(speakableText(heb, store.settings)))),
   h("span", { class: "m" }, mean, ref ? h("span", { class: "faint" }, ", " + ctx.refText(...ref)) : null));
 
@@ -32,12 +33,16 @@ const isHeb = (c) => typeof c === "string" && /[֐-׿]/.test(c) && !/[A-Za-zÀ-�
 const isMixed = (c) => typeof c === "string" && /[֐-׿]/.test(c) && /[A-Za-zÀ-ɏ]/.test(c);
 const mixedText = (c) => c.split(/([֐-׿](?:[֐-׿\s]*[֐-׿])?)/).filter(Boolean)
   .map(x => /[֐-׿]/.test(x) ? he(x, "inline") : x);
-// Table: cells are strings, { t: "translit" } (shown via tl()), or DOM nodes.
+// Table: cells are strings, { t: "translit" } (shown via tl(), with the row's Hebrew deciding a final ה), or DOM nodes.
+const cell = (c) => typeof c === "string" ? marks(c) : c;
 export const table = (head, rows) => h("div", { class: "table-wrap" }, h("table", null,
-  h("thead", null, h("tr", null, head.map(x => h("th", null, isHeb(x) ? he(x, "inline") : isMixed(x) ? mixedText(x) : x)))),
-  h("tbody", null, rows.map(r => h("tr", null, r.map((c) => isHeb(c) ? h("td", { class: "he-cell" }, he(c))
-    : isMixed(c) ? h("td", null, mixedText(c))
-    : (c && typeof c === "object" && "t" in c) ? h("td", { class: "tl" }, tl(c.t)) : h("td", null, c)))))));
+  h("thead", null, h("tr", null, head.map(x => h("th", null, isHeb(x) ? he(x, "inline") : isMixed(x) ? mixedText(cell(x)) : cell(x))))),
+  h("tbody", null, rows.map(r => {
+    const rowHeb = r.find(isHeb);
+    return h("tr", null, r.map((c) => isHeb(c) ? h("td", { class: "he-cell" }, he(c))
+      : isMixed(c) ? h("td", null, mixedText(cell(c)))
+      : (c && typeof c === "object" && "t" in c) ? h("td", { class: "tl" }, tl(c.t, rowHeb)) : h("td", null, cell(c))));
+  }))));
 
 export const p = (...x) => h("p", null, ...x);
 export const h2 = (en, ro) => h("h2", null, tr(en, ro));

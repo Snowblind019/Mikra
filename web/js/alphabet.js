@@ -1,7 +1,7 @@
 // Alphabet tab: letters (print and cursive), vowels, other marks, syllable builder, writing practice, keyboard, drills.
 
 import { api, store } from "./store.js";
-import { h, clear, icon, iconBtn, he, heText, heClass, toast, shuffle, trt } from "./ui.js";
+import { h, clear, icon, iconBtn, he, heText, heClass, toast, shuffle, deckFor, choiceSeg, trt } from "./ui.js";
 import { tr, tl, L, lang, cursive } from "./i18n.js";
 import { translit, lemmaTranslit, speakableLemma, stripCantillation, stripPoints, KEYBOARD, KEYBOARD_ROWS } from "./hebrew.js";
 import { speak } from "./audio.js";
@@ -10,7 +10,8 @@ import { ctx } from "./ctx.js";
 let root, body, sub = "letters";
 
 // ------------------------------------------------------------------ data
-// name: [English, Romanian]; tr: hand transliteration (English style, shown through tl());
+// name: [English, Romanian], with Hebrew words marked {…} so they follow the transliteration spelling;
+// tr: hand transliteration (English style, shown through tl(); "q / k|k" gives the Romanian form by hand);
 // sound / cmp: { en, ro }; ex: [Hebrew, transliteration, { en, ro } meaning, [book, chapter, verse]]
 
 export const LETTERS = [
@@ -22,7 +23,7 @@ export const LETTERS = [
     sound: { en: "With a dot inside (בּ) it is b. Without the dot (ב) it is v.", ro: "Cu punct înăuntru (בּ) e b. Fără punct (ב) e v." },
     cmp: { en: "b as in “boy”, v as in “very”.", ro: "b ca în „bun”, v ca în „vin”." },
     ex: ["בָּרָא", "ba·ra", { en: "he created", ro: "a făcut (a creat)" }, [0, 1, 1]], ex2: ["טוֹב", "tov", { en: "good", ro: "bun" }, [0, 1, 4]], like: ["כ"] },
-  { ch: "ג", name: ["Gimel", "Ghimel"], nameHe: "גִּימֶל", tr: "g", value: 3,
+  { ch: "ג", name: ["{Gimel}", "{Gimel}"], nameHe: "גִּימֶל", tr: "g", value: 3,
     sound: { en: "Always a hard g.", ro: "Mereu un g tare." },
     cmp: { en: "Like “g” in “go”, never like “g” in “gem”.", ro: "Ca „g” din „gară”, niciodată ca „ge” sau „gi” din română." },
     ex: ["גָּדוֹל", "ga·dol", { en: "great", ro: "mare" }, [0, 12, 2]], like: ["נ"] },
@@ -37,21 +38,21 @@ export const LETTERS = [
     sound: { en: "v. It also writes vowels: וֹ is o and וּ is u.", ro: "v. Scrie și vocale: וֹ e o și וּ e u." },
     cmp: { en: "v as in “very”.", ro: "v ca în „vin”." },
     ex: ["וַיֹּאמֶר", "va·yo·mer", { en: "and he said", ro: "și a zis" }, [0, 1, 3]], like: ["ז", "ן"] },
-  { ch: "ז", name: ["Zayin", "Zain"], nameHe: "זַיִן", tr: "z", value: 7,
+  { ch: "ז", name: ["{Zayin}", "{Zayin}"], nameHe: "זַיִן", tr: "z", value: 7,
     sound: { en: "z.", ro: "z." }, cmp: { en: "Like English z.", ro: "Ca z din română." },
     ex: ["זָכַר", "za·khar", { en: "he remembered", ro: "și-a adus aminte" }, [0, 40, 23]], like: ["ו", "ן"] },
-  { ch: "ח", name: ["Chet", "Het"], nameHe: "חֵית", tr: "ch", value: 8,
+  { ch: "ח", name: ["{Chet}", "{Chet}"], nameHe: "חֵית", tr: "ch", value: 8,
     sound: { en: "A scraped h from the back of the throat.", ro: "Un h aspru, din fundul gâtului." },
     cmp: { en: "Like “ch” in Scottish “loch” or German “Bach”.", ro: "Foarte aproape de h din „duh” sau „hrană”." },
     ex: ["חֹשֶׁךְ", "cho·shekh", { en: "darkness", ro: "întuneric" }, [0, 1, 2]], like: ["ה", "ת"] },
   { ch: "ט", name: ["Tet", "Tet"], nameHe: "טֵית", tr: "t", value: 9,
     sound: { en: "t.", ro: "t." }, cmp: { en: "Like English t.", ro: "Ca t din română." },
     ex: ["טוֹב", "tov", { en: "good", ro: "bun" }, [0, 1, 4]] },
-  { ch: "י", name: ["Yod", "Iod"], nameHe: "יוֹד", tr: "y", value: 10,
-    sound: { en: "y. It also helps write the vowels i and e.", ro: "i (ca în „iarnă”). Ajută și la scrierea vocalelor i și e." },
+  { ch: "י", name: ["{Yod}", "{Yod}"], nameHe: "יוֹד", tr: "y", value: 10,
+    sound: { en: "{y}. It also helps write the vowels i and e.", ro: "{y} (ca în „iarnă”). Ajută și la scrierea vocalelor i și e." },
     cmp: { en: "Like “y” in “yes”.", ro: "Ca „i” de la începutul lui „iarnă”." },
     ex: ["יוֹם", "yom", { en: "day", ro: "zi" }, [0, 1, 5]] },
-  { ch: "כ", name: ["Kaf / Khaf", "Kaf / Haf"], nameHe: "כַּף", tr: "k / kh", value: 20, final: "ך",
+  { ch: "כ", name: ["Kaf / {Khaf}", "Kaf / {Khaf}"], nameHe: "כַּף", tr: "k / kh", value: 20, final: "ך",
     sound: { en: "With a dot (כּ) it is k. Without the dot (כ) it is the scraped h, the same sound as ח. At the end of a word it is written ך.", ro: "Cu punct (כּ) e k. Fără punct (כ) e h-ul aspru, același sunet ca ח. La sfârșitul cuvântului se scrie ך." },
     cmp: { en: "k as in “king”; without the dot like “ch” in “Bach”.", ro: "k ca în „cal”; fără punct ca h din „duh”." },
     ex: ["כָּל", "kol", { en: "all", ro: "tot" }, [0, 1, 21]], ex2: ["מֶלֶךְ", "me·lekh", { en: "king", ro: "împărat" }, [0, 14, 1]], like: ["ב"] },
@@ -67,10 +68,10 @@ export const LETTERS = [
     sound: { en: "n. At the end of a word it is written ן, a long line going below the line.", ro: "n. La sfârșitul cuvântului se scrie ן, o linie lungă care coboară sub rând." },
     cmp: { en: "Like English n.", ro: "Ca n din română." },
     ex: ["נֶפֶשׁ", "ne·fesh", { en: "soul, life", ro: "suflet, viață" }, [0, 2, 7]], ex2: ["בֵּן", "ben", { en: "son", ro: "fiu" }, [0, 4, 25]], like: ["ג"] },
-  { ch: "ס", name: ["Samekh", "Sameh"], nameHe: "סָמֶךְ", tr: "s", value: 60,
+  { ch: "ס", name: ["{Samekh}", "{Samekh}"], nameHe: "סָמֶךְ", tr: "s", value: 60,
     sound: { en: "s.", ro: "s." }, cmp: { en: "Like English s.", ro: "Ca s din română." },
     ex: ["סֵפֶר", "se·fer", { en: "book, scroll", ro: "carte, sul" }, [0, 5, 1]], like: ["ם"] },
-  { ch: "ע", name: ["Ayin", "Ain"], nameHe: "עַיִן", tr: "ʻ", value: 70,
+  { ch: "ע", name: ["{Ayin}", "{Ayin}"], nameHe: "עַיִן", tr: "ʻ", value: 70,
     sound: { en: "Usually read silent like alef today. Originally a deep sound in the throat.", ro: "Azi se citește de obicei mut, ca alef. La început era un sunet adânc din gât." },
     cmp: { en: "No English equivalent. Read the vowel under it.", ro: "Nu are pereche în română. Citește vocala de sub ea." },
     ex: ["עוֹלָם", "o·lam", { en: "forever, world", ro: "veșnicie, lume" }, [0, 9, 16]], like: ["צ"] },
@@ -78,20 +79,20 @@ export const LETTERS = [
     sound: { en: "With a dot (פּ) it is p. Without the dot (פ) it is f. At the end of a word it is written ף.", ro: "Cu punct (פּ) e p. Fără punct (פ) e f. La sfârșitul cuvântului se scrie ף." },
     cmp: { en: "p as in “peace”, f as in “fire”.", ro: "p ca în „pace”, f ca în „foc”." },
     ex: ["פָּנִים", "pa·nim", { en: "face", ro: "față" }, [0, 32, 30]], ex2: ["אַף", "af", { en: "also; nose", ro: "și; nas" }, [0, 3, 1]] },
-  { ch: "צ", name: ["Tsadi", "Țadi"], nameHe: "צָדִי", tr: "tz", value: 90, final: "ץ",
-    sound: { en: "ts. At the end of a word it is written ץ.", ro: "ț. La sfârșitul cuvântului se scrie ץ." },
+  { ch: "צ", name: ["{Tsadi}", "{Tsadi}"], nameHe: "צָדִי", tr: "tz", value: 90, final: "ץ",
+    sound: { en: "{ts}. At the end of a word it is written ץ.", ro: "{ts}. La sfârșitul cuvântului se scrie ץ." },
     cmp: { en: "Like “ts” in “cats”.", ro: "Exact ț din română." },
     ex: ["צֶדֶק", "tze·dek", { en: "righteousness", ro: "dreptate" }, [2, 19, 36]], ex2: ["אֶרֶץ", "e·retz", { en: "earth, land", ro: "pământ, țară" }, [0, 2, 11]], like: ["ע"] },
-  { ch: "ק", name: ["Qof", "Kof"], nameHe: "קוֹף", tr: "q / k", value: 100,
+  { ch: "ק", name: ["{Qof|Kuf}", "{Qof|Kuf}"], nameHe: "קוֹף", tr: "q / k|k", value: 100,
     sound: { en: "k. Originally said deeper in the throat than כּ.", ro: "k. La început se spunea mai adânc în gât decât כּ." },
     cmp: { en: "Like “k” in “king”.", ro: "Ca c din „cal”." },
     ex: ["קוֹל", "kol", { en: "voice", ro: "glas" }, [0, 3, 8]] },
-  { ch: "ר", name: ["Resh", "Reș"], nameHe: "רֵישׁ", tr: "r", value: 200,
+  { ch: "ר", name: ["{Resh}", "{Resh}"], nameHe: "רֵישׁ", tr: "r", value: 200,
     sound: { en: "r. Israelis say it in the throat; a rolled r is also used in many traditions.", ro: "r. Israelienii îl spun din gât; în multe tradiții se folosește și r-ul rulat." },
     cmp: { en: "Any English r works; a rolled r is also fine.", ro: "R-ul tău românesc e foarte bun." },
     ex: ["רוּחַ", "ru·ach", { en: "spirit, wind", ro: "duh, vânt" }, [0, 1, 2]], like: ["ד", "ך"] },
-  { ch: "ש", name: ["Shin / Sin", "Șin / Sin"], nameHe: "שִׁין", tr: "sh / s", value: 300,
-    sound: { en: "A dot on the right (שׁ) makes sh. A dot on the left (שׂ) makes s.", ro: "Punctul în dreapta (שׁ) face ș. Punctul în stânga (שׂ) face s." },
+  { ch: "ש", name: ["{Shin} / Sin", "{Shin} / Sin"], nameHe: "שִׁין", tr: "sh / s", value: 300,
+    sound: { en: "A dot on the right (שׁ) makes {sh}. A dot on the left (שׂ) makes s.", ro: "Punctul în dreapta (שׁ) face {sh}. Punctul în stânga (שׂ) face s." },
     cmp: { en: "שׁ is “sh” as in “shoe”, שׂ is s.", ro: "שׁ e ș din română, שׂ e s." },
     ex: ["שָׁלוֹם", "sha·lom", { en: "peace", ro: "pace" }, [0, 43, 23]], ex2: ["יִשְׂרָאֵל", "yis·ra·el", { en: "Israel", ro: "Israel" }, [0, 32, 28]] },
   { ch: "ת", name: ["Tav", "Tav"], nameHe: "תָּו", tr: "t", value: 400,
@@ -103,43 +104,43 @@ export const LETTERS = [
 const FINAL_INFO = { "ך": "כ", "ם": "מ", "ן": "נ", "ף": "פ", "ץ": "צ" };
 
 export const VOWELS = [
-  { sign: "ַ", name: ["Patach", "Patah"], nameHe: "פַּתַח", sound: "a", cmp: { en: "a as in “father”", ro: "a ca în „apă”" }, kind: "short", ex: ["בַּת", "bat", { en: "daughter", ro: "fiică" }] },
-  { sign: "ָ", name: ["Kamatz", "Kameț"], nameHe: "קָמַץ", sound: "a", cmp: { en: "a as in “father”; in a few closed syllables it is o (kamatz katan)", ro: "a; în câteva silabe închise e o (kameț katan)" }, kind: "long", ex: ["דָּבָר", "da·var", { en: "word", ro: "cuvânt" }] },
-  { sign: "ֲ", name: ["Chataf patach", "Hataf patah"], nameHe: "חֲטַף פַּתַח", sound: "a", cmp: { en: "a very short a", ro: "un a foarte scurt" }, kind: "reduced", ex: ["אֲנִי", "a·ni", { en: "I", ro: "eu" }] },
-  { sign: "ֵ", name: ["Tsere", "Țere"], nameHe: "צֵרֵי", sound: "e", cmp: { en: "e as in “they”", ro: "e ca în „mere”" }, kind: "long", ex: ["לֵב", "lev", { en: "heart", ro: "inimă" }] },
-  { sign: "ֵי", name: ["Tsere with yod", "Țere cu iod"], nameHe: "צֵרֵי מָלֵא", sound: "e / ei", cmp: { en: "e or “ei” as in “eight”", ro: "e sau ei ca în „lei”" }, kind: "long", ex: ["בֵּית", "beit", { en: "house of", ro: "casa lui" }] },
+  { sign: "ַ", name: ["{Patach}", "{Patach}"], nameHe: "פַּתַח", sound: "a", cmp: { en: "a as in “father”", ro: "a ca în „apă”" }, kind: "short", ex: ["בַּת", "bat", { en: "daughter", ro: "fiică" }] },
+  { sign: "ָ", name: ["{Kamatz}", "{Kamatz}"], nameHe: "קָמַץ", sound: "a", cmp: { en: "a as in “father”; in a few closed syllables it is o ({kamatz katan})", ro: "a; în câteva silabe închise e o ({kamatz katan})" }, kind: "long", ex: ["דָּבָר", "da·var", { en: "word", ro: "cuvânt" }] },
+  { sign: "ֲ", name: ["{Chataf patach}", "{Chataf patach}"], nameHe: "חֲטַף פַּתַח", sound: "a", cmp: { en: "a very short a", ro: "un a foarte scurt" }, kind: "reduced", ex: ["אֲנִי", "a·ni", { en: "I", ro: "eu" }] },
+  { sign: "ֵ", name: ["{Tsere}", "{Tsere}"], nameHe: "צֵרֵי", sound: "e", cmp: { en: "e as in “they”", ro: "e ca în „mere”" }, kind: "long", ex: ["לֵב", "lev", { en: "heart", ro: "inimă" }] },
+  { sign: "ֵי", name: ["{Tsere} with {yod}", "{Tsere} cu {yod}"], nameHe: "צֵרֵי מָלֵא", sound: "e / ei", cmp: { en: "e or “ei” as in “eight”", ro: "e sau ei ca în „lei”" }, kind: "long", ex: ["בֵּית", "beit", { en: "house of", ro: "casa lui" }] },
   { sign: "ֶ", name: ["Segol", "Segol"], nameHe: "סֶגּוֹל", sound: "e", cmp: { en: "e as in “bed”", ro: "e ca în „mere”" }, kind: "short", ex: ["מֶלֶךְ", "me·lekh", { en: "king", ro: "împărat" }] },
-  { sign: "ֱ", name: ["Chataf segol", "Hataf segol"], nameHe: "חֲטַף סֶגּוֹל", sound: "e", cmp: { en: "a very short e", ro: "un e foarte scurt" }, kind: "reduced", ex: ["אֱלֹהִים", "e·lo·him", { en: "God", ro: "Dumnezeu" }] },
-  { sign: "ִ", name: ["Chirik", "Hirik"], nameHe: "חִירִיק", sound: "i", cmp: { en: "i as in “machine”", ro: "i ca în „vin”" }, kind: "short", ex: ["מִן", "min", { en: "from", ro: "din" }] },
-  { sign: "ִי", name: ["Chirik with yod", "Hirik cu iod"], nameHe: "חִירִיק מָלֵא", sound: "i", cmp: { en: "i as in “machine”", ro: "i ca în „vin”" }, kind: "long", ex: ["שִׁיר", "shir", { en: "song", ro: "cântare" }] },
-  { sign: "ֹ", name: ["Cholam", "Holam"], nameHe: "חוֹלָם", sound: "o", cmp: { en: "o as in “go”", ro: "o ca în „om”" }, kind: "long", ex: ["לֹא", "lo", { en: "not", ro: "nu" }] },
-  { sign: "וֹ", name: ["Cholam with vav", "Holam cu vav"], nameHe: "חוֹלָם מָלֵא", sound: "o", cmp: { en: "o as in “go”", ro: "o ca în „om”" }, kind: "long", ex: ["טוֹב", "tov", { en: "good", ro: "bun" }] },
-  { sign: "ֳ", name: ["Chataf kamatz", "Hataf kameț"], nameHe: "חֲטַף קָמַץ", sound: "o", cmp: { en: "a very short o", ro: "un o foarte scurt" }, kind: "reduced", ex: ["חֳדָשִׁים", "cho·da·shim", { en: "months", ro: "luni" }] },
-  { sign: "ֻ", name: ["Kubutz", "Kubuț"], nameHe: "קֻבּוּץ", sound: "u", cmp: { en: "u as in “rule”", ro: "u ca în „unu”" }, kind: "short", ex: ["שֻׁלְחָן", "shul·chan", { en: "table", ro: "masă" }] },
-  { sign: "וּ", name: ["Shuruk", "Șuruk"], nameHe: "שׁוּרֻק", sound: "u", cmp: { en: "u as in “rule”", ro: "u ca în „unu”" }, kind: "long", ex: ["רוּחַ", "ru·ach", { en: "spirit", ro: "duh" }] },
-  { sign: "ְ", name: ["Shva", "Șva"], nameHe: "שְׁוָא", sound: "e / –", cmp: { en: "a quick “uh”, or nothing at all", ro: "un ă scurt, sau nimic" }, kind: "reduced", ex: ["בְּרֵאשִׁית", "be·re·shit", { en: "in the beginning", ro: "la început" }] },
+  { sign: "ֱ", name: ["{Chataf} segol", "{Chataf} segol"], nameHe: "חֲטַף סֶגּוֹל", sound: "e", cmp: { en: "a very short e", ro: "un e foarte scurt" }, kind: "reduced", ex: ["אֱלֹהִים", "e·lo·him", { en: "God", ro: "Dumnezeu" }] },
+  { sign: "ִ", name: ["{Chirik}", "{Chirik}"], nameHe: "חִירִיק", sound: "i", cmp: { en: "i as in “machine”", ro: "i ca în „vin”" }, kind: "short", ex: ["מִן", "min", { en: "from", ro: "din" }] },
+  { sign: "ִי", name: ["{Chirik} with {yod}", "{Chirik} cu {yod}"], nameHe: "חִירִיק מָלֵא", sound: "i", cmp: { en: "i as in “machine”", ro: "i ca în „vin”" }, kind: "long", ex: ["שִׁיר", "shir", { en: "song", ro: "cântare" }] },
+  { sign: "ֹ", name: ["{Cholam}", "{Cholam}"], nameHe: "חוֹלָם", sound: "o", cmp: { en: "o as in “go”", ro: "o ca în „om”" }, kind: "long", ex: ["לֹא", "lo", { en: "not", ro: "nu" }] },
+  { sign: "וֹ", name: ["{Cholam} with vav", "{Cholam} cu vav"], nameHe: "חוֹלָם מָלֵא", sound: "o", cmp: { en: "o as in “go”", ro: "o ca în „om”" }, kind: "long", ex: ["טוֹב", "tov", { en: "good", ro: "bun" }] },
+  { sign: "ֳ", name: ["{Chataf kamatz}", "{Chataf kamatz}"], nameHe: "חֲטַף קָמַץ", sound: "o", cmp: { en: "a very short o", ro: "un o foarte scurt" }, kind: "reduced", ex: ["חֳדָשִׁים", "cho·da·shim", { en: "months", ro: "luni" }] },
+  { sign: "ֻ", name: ["{Kubutz}", "{Kubutz}"], nameHe: "קֻבּוּץ", sound: "u", cmp: { en: "u as in “rule”", ro: "u ca în „unu”" }, kind: "short", ex: ["שֻׁלְחָן", "shul·chan", { en: "table", ro: "masă" }] },
+  { sign: "וּ", name: ["{Shuruk}", "{Shuruk}"], nameHe: "שׁוּרֻק", sound: "u", cmp: { en: "u as in “rule”", ro: "u ca în „unu”" }, kind: "long", ex: ["רוּחַ", "ru·ach", { en: "spirit", ro: "duh" }] },
+  { sign: "ְ", name: ["{Shva}", "{Shva}"], nameHe: "שְׁוָא", sound: "e / –", cmp: { en: "a quick “uh”, or nothing at all", ro: "un ă scurt, sau nimic" }, kind: "reduced", ex: ["בְּרֵאשִׁית", "be·re·shit", { en: "in the beginning", ro: "la început" }] },
 ];
 
 const KIND = { short: ["short", "scurtă"], long: ["long", "lungă"], reduced: ["reduced", "redusă"] };
 
 const MARKS = [
-  { he: "בּ", name: ["Dagesh", "Dagheș"], text: { en: "A dot inside a letter. In ב כ פ it makes the hard sound (b, k, p). In most other letters it doubles the letter: הַשָּׁמַיִם is hash-shamayim. The six letters בגדכפת are called begadkefat because they can take the hardening dot.",
-    ro: "Un punct într-o literă. În ב כ פ dă sunetul tare (b, k, p). În cele mai multe alte litere dublează litera: הַשָּׁמַיִם se citește haș-șamaim. Cele șase litere בגדכפת se numesc begadkefat pentru că pot primi acest punct." }, ex: ["הַשָּׁמַיִם", "ha·sha·ma·yim", { en: "the heavens", ro: "cerurile" }] },
-  { he: "הּ", name: ["Mappiq", "Mapik"], text: { en: "A dot inside a final ה. It means the h is really pronounced, usually meaning “her”.", ro: "Un punct într-un ה de la sfârșit. Arată că h chiar se pronunță; de obicei înseamnă „ei” (a ei)." }, ex: ["לָהּ", "lah", { en: "to her", ro: "ei (către ea)" }] },
-  { he: "שׁ שׂ", name: ["Shin dot and sin dot", "Punctul de la șin și sin"], text: { en: "Dot on the right: sh. Dot on the left: s.", ro: "Punct în dreapta: ș. Punct în stânga: s." }, ex: ["שָׂרָה", "sa·rah", { en: "Sarah", ro: "Sara" }] },
+  { he: "בּ", name: ["{Dagesh}", "{Dagesh}"], text: { en: "A dot inside a letter. In ב כ פ it makes the hard sound (b, k, p). In most other letters it doubles the letter: הַשָּׁמַיִם is {hash-shamayim}. The six letters בגדכפת are called begadkefat because they can take the hardening dot.",
+    ro: "Un punct într-o literă. În ב כ פ dă sunetul tare (b, k, p). În cele mai multe alte litere dublează litera: הַשָּׁמַיִם se citește {hash-shamayim}. Cele șase litere בגדכפת se numesc begadkefat pentru că pot primi acest punct." }, ex: ["הַשָּׁמַיִם", "ha·sha·ma·yim", { en: "the heavens", ro: "cerurile" }] },
+  { he: "הּ", name: ["{Mappiq|Mapik}", "{Mappiq|Mapik}"], text: { en: "A dot inside a final ה. It means the h is really pronounced, usually meaning “her”.", ro: "Un punct într-un ה de la sfârșit. Arată că h chiar se pronunță; de obicei înseamnă „ei” (a ei)." }, ex: ["לָהּ", "lah", { en: "to her", ro: "ei (către ea)" }] },
+  { he: "שׁ שׂ", name: ["{Shin} dot and sin dot", "Punctul de la {shin} și sin"], text: { en: "Dot on the right: {sh}. Dot on the left: s.", ro: "Punct în dreapta: {sh}. Punct în stânga: s." }, ex: ["שָׂרָה", "sa·rah", { en: "Sarah", ro: "Sara" }] },
   { he: "וּ וֹ", name: ["Vav as a vowel", "Vav ca vocală"], text: { en: "With a dot in its middle, ו is the vowel u. With a dot on top, it is the vowel o. Letters that show vowels like this (א ה ו י) are called matres lectionis, “mothers of reading”.",
     ro: "Cu un punct la mijloc, ו este vocala u. Cu un punct deasupra, este vocala o. Literele care arată vocale așa (א ה ו י) se numesc matres lectionis, „mamele citirii”." }, ex: ["תּוֹרָה", "to·rah", { en: "teaching", ro: "învățătură" }] },
-  { he: "־", name: ["Maqaf", "Makaf"], text: { en: "A small hyphen at the top. It joins two words so they are read as one unit with one main stress.", ro: "O liniuță mică sus. Leagă două cuvinte ca să fie citite împreună, cu un singur accent principal." }, ex: ["כָּל־הָאָרֶץ", "kol ha·a·retz", { en: "all the earth", ro: "tot pământul" }] },
-  { he: "׃", name: ["Sof pasuq", "Sof pasuk"], text: { en: "Two dots like a colon. It ends the verse.", ro: "Două puncte, ca semnul „:”. Încheie versetul." }, ex: null },
-  { he: "ב֑", name: ["Accent marks (te'amim)", "Accentele (teamim)"], text: { en: "The small marks above and below the words show the melody for chanting the text. More useful for you: the accent usually sits on the stressed syllable, so it shows where to put the stress. The biggest pauses are atnach ֑ (the middle of the verse) and silluq, the last stressed word before ׃. You can hide accents in the reader under View.",
-    ro: "Semnele mici de deasupra și de dedesubtul cuvintelor arată melodia cântării. Mai folositor pentru tine: semnul de accent stă de obicei pe silaba accentuată, deci îți arată unde cade accentul. Cele mai mari pauze sunt atnah ֑ (mijlocul versetului) și silluq, ultimul cuvânt accentuat dinainte de ׃. Le poți ascunde în cititor din Afișare." }, ex: null },
+  { he: "־", name: ["{Maqaf}", "{Maqaf}"], text: { en: "A small hyphen at the top. It joins two words so they are read as one unit with one main stress.", ro: "O liniuță mică sus. Leagă două cuvinte ca să fie citite împreună, cu un singur accent principal." }, ex: ["כָּל־הָאָרֶץ", "kol ha·a·retz", { en: "all the earth", ro: "tot pământul" }] },
+  { he: "׃", name: ["Sof {pasuq}", "Sof {pasuq}"], text: { en: "Two dots like a colon. It ends the verse.", ro: "Două puncte, ca semnul „:”. Încheie versetul." }, ex: null },
+  { he: "ב֑", name: ["Accent marks ({te'amim|teamim})", "Accentele ({te'amim|teamim})"], text: { en: "The small marks above and below the words show the melody for chanting the text. More useful for you: the accent usually sits on the stressed syllable, so it shows where to put the stress. The biggest pauses are {atnach} ֑ (the middle of the verse) and {silluq}, the last stressed word before ׃. You can hide accents in the reader under View.",
+    ro: "Semnele mici de deasupra și de dedesubtul cuvintelor arată melodia cântării. Mai folositor pentru tine: semnul de accent stă de obicei pe silaba accentuată, deci îți arată unde cade accentul. Cele mai mari pauze sunt {atnach} ֑ (mijlocul versetului) și {silluq}, ultimul cuvânt accentuat dinainte de ׃. Le poți ascunde în cititor din Afișare." }, ex: null },
   { he: "בָֽ", name: ["Meteg", "Meteg"], text: { en: "A short vertical line under a letter, next to a vowel. It marks a secondary stress and helps keep the vowel long. You can ignore it while learning.", ro: "O linie mică verticală sub o literă, lângă o vocală. Arată un accent secundar și ține vocala lungă. Poți să n-o bagi în seamă cât înveți." }, ex: null },
-  { he: "׀", name: ["Paseq", "Pasek"], text: { en: "A vertical line between words. A small pause.", ro: "O linie verticală între cuvinte. O pauză mică." }, ex: null },
+  { he: "׀", name: ["{Paseq}", "{Paseq}"], text: { en: "A vertical line between words. A small pause.", ro: "O linie verticală între cuvinte. O pauză mică." }, ex: null },
   { he: "פ ס", name: ["Paragraph marks", "Semne de paragraf"], text: { en: "פ marks an open paragraph and ס a closed one. They divide the text into sections.", ro: "פ arată un paragraf deschis și ס unul închis. Împart textul în secțiuni." }, ex: null },
   { he: "יְהוָה", name: ["The Divine Name", "Numele lui Dumnezeu"], text: { en: "The four letters יהוה are written with the vowels of אֲדֹנָי (Adonai, “Lord”), as a sign to read Adonai aloud. This is why the KJV writes “LORD”. The app reads it as Adonai unless you change it in Settings, Audio.",
     ro: "Cele patru litere יהוה sunt scrise cu vocalele lui אֲדֹנָי (Adonai, „Domnul”), ca semn că se citește Adonai. De aceea Cornilescu scrie „Domnul”. Aplicația îl citește Adonai, afară de cazul când schimbi asta în Setări, Sunet." }, ex: null },
-  { he: "קרי", name: ["Ketiv and Qere", "Ketiv și Qere"], text: { en: "In a few hundred places the scribes wrote a word one way (ketiv, “written”) but noted it should be read another way (qere, “read”). This text follows the qere, and the word panel shows a reading note when that happens.",
-    ro: "În câteva sute de locuri cărturarii au scris un cuvânt într-un fel (ketiv, „scris”) dar au notat că trebuie citit altfel (qere, „citit”). Textul acesta urmează qere, iar panoul cuvântului arată o notă de citire când se întâmplă asta." }, ex: null },
+  { he: "קרי", name: ["Ketiv and {Qere}", "Ketiv și {Qere}"], text: { en: "In a few hundred places the scribes wrote a word one way (ketiv, “written”) but noted it should be read another way ({qere}, “read”). This text follows the {qere}, and the word panel shows a reading note when that happens.",
+    ro: "În câteva sute de locuri cărturarii au scris un cuvânt într-un fel (ketiv, „scris”) dar au notat că trebuie citit altfel ({qere}, „citit”). Textul acesta urmează {qere}, iar panoul cuvântului arată o notă de citire când se întâmplă asta." }, ex: null },
 ];
 
 // Simplified stroke paths for practising the printed (block) letters.
@@ -218,7 +219,7 @@ function sayBtn(text, title) { return iconBtn("speaker", title || tr("Listen", "
 
 function exampleLine(ex) {
   if (!ex) return null;
-  return h("div", { class: "row", style: { gap: "8px" } }, sayBtn(ex[0]), he(ex[0]), h("span", { style: { color: "var(--lapis)" } }, tl(ex[1])), h("span", { class: "muted" }, L(ex[2])), ex[3] ? refLink(ex[3]) : null);
+  return h("div", { class: "row", style: { gap: "8px" } }, sayBtn(ex[0]), he(ex[0]), h("span", { style: { color: "var(--lapis)" } }, tl(ex[1], ex[0])), h("span", { class: "muted" }, L(ex[2])), ex[3] ? refLink(ex[3]) : null);
 }
 
 function refLink(ref) {
@@ -318,7 +319,7 @@ function vowels() {
       h("td", null, V.sound, " ", sayBtn(shown)),
       h("td", { class: "small" }, L(V.cmp)),
       h("td", { class: "small muted" }, tr(...KIND[V.kind])),
-      h("td", null, h("div", { class: "row", style: { justifyContent: "flex-end", gap: "6px" } }, h("span", { class: "small muted" }, tl(V.ex[1]) + ", " + L(V.ex[2])), sayBtn(V.ex[0]), h("span", { class: "ex he", lang: "he", style: { fontSize: "24px" } }, V.ex[0])))));
+      h("td", null, h("div", { class: "row", style: { justifyContent: "flex-end", gap: "6px" } }, h("span", { class: "small muted" }, tl(V.ex[1], V.ex[0]) + ", " + L(V.ex[2])), sayBtn(V.ex[0]), h("span", { class: "ex he", lang: "he", style: { fontSize: "24px" } }, V.ex[0])))));
   }
   t.append(tb);
   body.append(
@@ -374,7 +375,7 @@ function builder() {
       h("div", { style: { fontSize: "26px", color: "var(--lapis)" } }, sound || tr("(vowel only)", "(doar vocala)")),
       h("div", { class: "row", style: { justifyContent: "center", marginTop: "10px" } },
         h("button", { class: "btn", type: "button", onclick: () => speak(syl) }, icon("speaker"), tr("Listen", "Ascultă")),
-        h("button", { class: "btn", type: "button", onclick: () => { const ks = Object.keys(CONS_SOUND), vs = Object.keys(VOW_SOUND); bCons = ks[Math.floor(Math.random() * ks.length)]; bVow = vs[Math.floor(Math.random() * vs.length)]; bEnd = ""; clear(body); builder(); } }, icon("shuffle"), tr("Random", "La întâmplare"))),
+        h("button", { class: "btn", type: "button", onclick: () => { bCons = deckFor("builder-cons", Object.keys(CONS_SOUND)).next(); bVow = deckFor("builder-vowel", Object.keys(VOW_SOUND)).next(); bEnd = ""; clear(body); builder(); } }, icon("shuffle"), tr("Random", "La întâmplare"))),
       h("p", { class: "small muted", style: { marginTop: "12px" } }, tr("Single syllables can sound a little odd from the voice engine. Whole words are more natural.", "Silabele singure pot suna puțin ciudat la vocea sintetică. Cuvintele întregi sună mai firesc.")))));
 }
 
@@ -530,8 +531,7 @@ function keyboard() {
     next();
   }
   function next() {
-    const letters = Object.values(KEYBOARD);
-    word = mode === "letters" ? letters[Math.floor(Math.random() * letters.length)] : words[Math.floor(Math.random() * words.length)];
+    word = mode === "letters" ? deckFor("keys", Object.values(KEYBOARD)).next() : deckFor("key-words", words).next();
     pos = 0;
     draw();
   }
@@ -582,25 +582,53 @@ let drillScore = { right: 0, total: 0, kind: "" };
 
 function drills() {
   const kinds = [
-    ["names", tr("Letter names", "Numele literelor"), tr("See a letter, pick its name.", "Vezi o literă și alegi numele ei.")],
-    ["sounds", tr("Letter sounds", "Sunetele literelor"), tr("See a sound, pick the letter that makes it.", "Vezi un sunet și alegi litera care îl face.")],
+    ["names", tr("Letter names", "Numele literelor"), tr("Match each letter with its name.", "Potrivești fiecare literă cu numele ei.")],
+    ["sounds", tr("Letter sounds", "Sunetele literelor"), tr("Match each letter with the sound it makes.", "Potrivești fiecare literă cu sunetul pe care îl face.")],
     ["lookalikes", tr("Look-alikes", "Litere asemănătoare"), tr("Tell apart letters that are easy to confuse.", "Deosebești literele care se încurcă ușor.")],
-    ["vowels", tr("Vowel reading", "Citirea vocalelor"), tr("Read a syllable with a vowel.", "Citești o silabă cu o vocală.")],
+    ["vowels", tr("Vowel reading", "Citirea vocalelor"), tr("Read a syllable with a vowel, or find the syllable for a sound.", "Citești o silabă cu o vocală sau găsești silaba pentru un sunet.")],
     ["finals", tr("End forms", "Formele de la sfârșit"), tr("Match each end-of-word letter with its normal form.", "Potrivești fiecare literă de la sfârșit cu forma ei obișnuită.")],
-    ["scripts", tr("Print and cursive", "Tipar și de mână"), tr("See a handwritten letter, pick the print one (or the other way round).", "Vezi o literă scrisă de mână și alegi pe cea de tipar (sau invers).")],
-    ["words", tr("Read real words", "Citește cuvinte adevărate"), tr("Read a common Bible word out loud, then check yourself.", "Citește cu voce tare un cuvânt des întâlnit în Biblie, apoi verifică-te.")],
+    ["scripts", tr("Print and cursive", "Tipar și de mână"), tr("See a handwritten letter, pick the print one, or the other way round.", "Vezi o literă scrisă de mână și alegi pe cea de tipar, sau invers.")],
+    ["words", tr("Read real words", "Citește cuvinte adevărate"), tr("Read a common Bible word out loud, or recall it from its meaning, then check yourself.", "Citește cu voce tare un cuvânt des întâlnit în Biblie sau ți-l amintești după înțeles, apoi verifică-te.")],
   ];
   body.append(h("div", { class: "modes" }, kinds.map(([id, t, d]) => h("button", { class: "mode", type: "button", onclick: () => { drillScore = { right: 0, total: 0, kind: id }; runDrill(id); } }, h("b", null, t), h("span", null, d)))));
-  body.append(h("p", { class: "small muted", style: { marginTop: "14px" } }, tr("20 answers with at least 80% right in the letter drills, or in the vowel drill, tick off the first steps on the Today tab.",
+  body.append(h("p", { class: "small muted", style: { marginTop: "14px" } }, tr("In each drill, “Show” at the top picks what the questions show: the Hebrew, the other side (name, sound, meaning), or both taking turns.",
+    "În fiecare exercițiu, „Arată” de sus alege ce arată întrebările: ebraica, cealaltă parte (numele, sunetul, înțelesul) sau amândouă pe rând.")));
+  body.append(h("p", { class: "small muted", style: { marginTop: "6px" } }, tr("20 answers with at least 80% right in the letter drills, or in the vowel drill, tick off the first steps on the Today tab.",
     "20 de răspunsuri cu cel puțin 80% corecte la exercițiile cu litere, sau la cel cu vocale, bifează primii pași din fila Azi.")));
 }
 
-function drillFrame(title) {
+// What a drill's questions show (Settings: drillSides): "he" the Hebrew side, "mean" the other side, "both" in turns.
+const SIDE_LABELS = {
+  names: [["The letter", "Litera"], ["The name", "Numele"]],
+  sounds: [["The letter", "Litera"], ["The sound", "Sunetul"]],
+  lookalikes: [["The letter", "Litera"], ["The name", "Numele"]],
+  vowels: [["The syllable", "Silaba"], ["The sound", "Sunetul"]],
+  finals: [["The end form", "Forma de la sfârșit"], ["The normal form", "Forma obișnuită"]],
+  scripts: [["Handwritten", "Scris de mână"], ["Print", "Tipar"]],
+  words: [["The Hebrew", "Ebraica"], ["The meaning", "Înțelesul"]],
+};
+function sideOf(kind) {
+  const v = (store.settings.drillSides || {})[kind] || "he";
+  return v === "both" ? (drillScore.total % 2 === 0 ? "he" : "mean") : v;
+}
+
+function drillFrame(title, kind) {
   clear(body);
   const box = h("div", { class: "card", style: { maxWidth: "640px", margin: "0 auto" } });
   body.append(h("div", { class: "study-top", style: { maxWidth: "640px", margin: "0 auto 14px" } },
     h("button", { class: "btn ghost small", type: "button", onclick: () => { clear(body); drills(); } }, icon("left"), tr("Drills", "Exerciții")),
-    h("span", null, title), h("span", { class: "spacer" }), h("span", null, `${drillScore.right} / ${drillScore.total}`)), box);
+    h("span", null, title), h("span", { class: "spacer" }), h("span", null, `${drillScore.right} / ${drillScore.total}`)));
+  const labels = SIDE_LABELS[kind];
+  if (labels) {
+    const cur = (store.settings.drillSides || {})[kind] || "he";
+    body.append(h("div", { class: "row drill-side", style: { maxWidth: "640px", margin: "0 auto 12px", justifyContent: "center" } },
+      h("span", { class: "muted small" }, tr("Show", "Arată")),
+      choiceSeg([["he", tr(...labels[0])], ["mean", tr(...labels[1])], ["both", tr("Both, taking turns", "Pe rând")]], cur, (v) => {
+        store.setting("drillSides", { ...store.settings.drillSides, [kind]: v });
+        runDrill(kind); // a new question the new way round (the one on screen was not answered)
+      }, tr("Show", "Arată"))));
+  }
+  body.append(box);
   return box;
 }
 
@@ -614,7 +642,8 @@ function recordDrill() {
   }
 }
 
-function choiceDrill(box, options, correct, label, onNext, isHebrew, display) {
+// missed: called after a wrong answer, so the item can come back a few questions later.
+function choiceDrill(box, options, correct, label, onNext, isHebrew, display, missed) {
   const grid = h("div", { class: "choices" });
   let answered = false;
   const btns = options.map(o => h("button", { class: "choice" + (isHebrew ? " he" : ""), type: "button", lang: isHebrew ? "he" : null, onclick: () => {
@@ -625,7 +654,7 @@ function choiceDrill(box, options, correct, label, onNext, isHebrew, display) {
     if (ok) drillScore.right++;
     for (const b of btns) b.classList.add("locked");
     btns[options.indexOf(correct)].classList.add("right");
-    if (!ok) btns[options.indexOf(o)].classList.add("wrong");
+    if (!ok) { btns[options.indexOf(o)].classList.add("wrong"); if (missed) missed(); }
     if (label) box.append(h("div", { class: "muted", style: { marginTop: "10px" } }, label));
     box.append(h("button", { class: "btn primary", type: "button", style: { marginTop: "12px" }, onclick: onNext }, tr("Next", "Următorul")));
     recordDrill();
@@ -636,55 +665,106 @@ function choiceDrill(box, options, correct, label, onNext, isHebrew, display) {
 
 function runDrill(kind) {
   const next = () => runDrill(kind);
+  const side = sideOf(kind);
+  const bigHe = (text, extra = "") => h("div", { class: "big-he" + heClass() + extra, lang: "he" }, text);
+  const bigText = (text) => h("div", { style: { fontSize: "30px", margin: "14px 0", color: "var(--lapis)" } }, text);
   if (kind === "names") {
-    const box = drillFrame(tr("Letter names", "Numele literelor"));
-    const L0 = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-    const opts = shuffle([L0, ...shuffle(LETTERS.filter(x => x !== L0)).slice(0, 3)]).map(x => nameOf(x));
-    box.append(h("div", { class: "prompt" }, tr("What is this letter called?", "Cum se numește litera aceasta?")), h("div", { class: "big-he" + heClass(), lang: "he" }, L0.ch));
-    choiceDrill(box, opts, nameOf(L0), `${nameOf(L0)}: ${L(L0.sound)}`, next);
+    const box = drillFrame(tr("Letter names", "Numele literelor"), kind);
+    const bag = deckFor("drill-names", LETTERS, x => x.ch);
+    const L0 = bag.next();
+    const four = shuffle([L0, ...shuffle(LETTERS.filter(x => x !== L0)).slice(0, 3)]);
+    const missed = () => bag.again(L0);
+    if (side === "he") {
+      box.append(h("div", { class: "prompt" }, tr("What is this letter called?", "Cum se numește litera aceasta?")), bigHe(L0.ch));
+      choiceDrill(box, four.map(x => nameOf(x)), nameOf(L0), `${nameOf(L0)}: ${L(L0.sound)}`, next, false, null, missed);
+    } else {
+      box.append(h("div", { class: "prompt" }, tr("Which letter is", "Care literă este")), bigText(nameOf(L0)));
+      choiceDrill(box, four.map(x => x.ch), L0.ch, `${nameOf(L0)}: ${L(L0.sound)}`, next, true, heText, missed);
+    }
   } else if (kind === "sounds") {
-    const box = drillFrame(tr("Letter sounds", "Sunetele literelor"));
+    const box = drillFrame(tr("Letter sounds", "Sunetele literelor"), kind);
     const pool = LETTERS.filter(x => !["א", "ע"].includes(x.ch));
-    const L0 = pool[Math.floor(Math.random() * pool.length)];
-    // compare the sounds as shown (in Romanian ח and ה are both "h"): no wrong answer may share a sound with the right one
-    // ...and in English "ch" (ח) and "kh" (כ) are the same sound too
+    const bag = deckFor("drill-sounds", pool, x => x.ch);
+    const L0 = bag.next();
+    // compare the sounds as shown (in Romanian ח and ה are both "h"; in English "ch" ח and "kh" כ are the same sound):
+    // no two options may share a sound, so only one answer can be right
     const sounds = (x) => tl(x.tr).split(/\s*\/\s*/).map(snd => snd === "kh" ? "ch" : snd);
-    const mine = new Set(sounds(L0));
-    const others = shuffle(pool.filter(x => x !== L0 && !sounds(x).some(snd => mine.has(snd)))).slice(0, 3);
-    const opts = shuffle([L0, ...others]).map(x => x.ch);
-    box.append(h("div", { class: "prompt" }, tr("Which letter makes this sound?", "Ce literă face sunetul acesta?")), h("div", { style: { fontSize: "40px", margin: "16px 0", color: "var(--lapis)" } }, tl(L0.tr)));
-    choiceDrill(box, opts, L0.ch, `${nameOf(L0)}. ${L(L0.cmp)}`, next, true, heText);
+    const taken = new Set(sounds(L0));
+    const others = [];
+    for (const x of shuffle(pool)) {
+      if (others.length >= 3) break;
+      if (x === L0 || sounds(x).some(snd => taken.has(snd))) continue;
+      others.push(x);
+      sounds(x).forEach(snd => taken.add(snd));
+    }
+    const four = shuffle([L0, ...others]);
+    const missed = () => bag.again(L0);
+    if (side === "he") {
+      box.append(h("div", { class: "prompt" }, tr("What sound does this letter make?", "Ce sunet face litera aceasta?")), bigHe(L0.ch));
+      choiceDrill(box, four.map(x => tl(x.tr)), tl(L0.tr), `${nameOf(L0)}. ${L(L0.cmp)}`, next, false, null, missed);
+    } else {
+      box.append(h("div", { class: "prompt" }, tr("Which letter makes this sound?", "Ce literă face sunetul acesta?")), h("div", { style: { fontSize: "40px", margin: "16px 0", color: "var(--lapis)" } }, tl(L0.tr)));
+      choiceDrill(box, four.map(x => x.ch), L0.ch, `${nameOf(L0)}. ${L(L0.cmp)}`, next, true, heText, missed);
+    }
   } else if (kind === "lookalikes") {
     const groups = [["ב", "כ"], ["ד", "ר", "ך"], ["ה", "ח", "ת"], ["ו", "ז", "ן"], ["ס", "ם"], ["ג", "נ"], ["ע", "צ"], ["ט", "מ"]];
-    const g = groups[Math.floor(Math.random() * groups.length)];
-    const target = g[Math.floor(Math.random() * g.length)];
+    // every letter of every group gets its turn as the one asked for
+    const bag = deckFor("drill-lookalikes", groups.flatMap(gr => gr.map(t => [gr, t])), x => x[1]);
+    const [g, target] = bag.next();
     const nameOfCh = (c) => { const L0 = LETTERS.find(x => x.ch === c); if (L0) return nameOf(L0); const F = LETTERS.find(x => x.final === c); return F ? nameOf(F) + tr(" (end)", " (sfârșit)") : c; };
-    const box = drillFrame(tr("Look-alikes", "Litere asemănătoare"));
-    box.append(h("div", { class: "prompt" }, tr("Which one is", "Care este")), h("div", { style: { fontSize: "30px", margin: "12px 0" } }, nameOfCh(target)));
-    choiceDrill(box, shuffle(g), target, lookalikeTip(target) || lookalikeTip(FINAL_INFO[target] || target), next, true);
+    const box = drillFrame(tr("Look-alikes", "Litere asemănătoare"), kind);
+    const tip = lookalikeTip(target) || lookalikeTip(FINAL_INFO[target] || target);
+    const missed = () => bag.again([g, target]);
+    if (side === "he") {
+      box.append(h("div", { class: "prompt" }, tr("Which letter is this?", "Ce literă este aceasta?")), bigHe(target));
+      choiceDrill(box, shuffle(g).map(nameOfCh), nameOfCh(target), tip, next, false, null, missed);
+    } else {
+      box.append(h("div", { class: "prompt" }, tr("Which one is", "Care este")), h("div", { style: { fontSize: "30px", margin: "12px 0" } }, nameOfCh(target)));
+      choiceDrill(box, shuffle(g), target, tip, next, true, null, missed);
+    }
   } else if (kind === "vowels") {
-    const box = drillFrame(tr("Vowel reading", "Citirea vocalelor"));
+    const box = drillFrame(tr("Vowel reading", "Citirea vocalelor"), kind);
     const consKeys = ["בּ", "ד", "ל", "מ", "נ", "שׁ", "ק", "ר", "ת", "ג"];
     const vKeys = Object.keys(VOW_SOUND).filter(v => v !== "ְ");
-    const c = consKeys[Math.floor(Math.random() * consKeys.length)];
-    const v = vKeys[Math.floor(Math.random() * vKeys.length)];
+    const vBag = deckFor("drill-vowels", vKeys);
+    const c = deckFor("drill-vowel-cons", consKeys).next();
+    const v = vBag.next();
     const right = tl(CONS_SOUND[c] + VOW_SOUND[v]);
-    const opts = shuffle(["a", "e", "i", "o", "u"].map(x => tl(CONS_SOUND[c] + x)));
-    box.append(h("div", { class: "prompt" }, tr("How do you read it?", "Cum se citește?")), h("div", { class: "big-he", lang: "he" }, c + v), sayBtn(c + v));
     const vow = VOWELS.find(x => x.sign === v);
-    choiceDrill(box, opts, right, vow ? `${tr(vow.name[0], vow.name[1])}: ${vow.sound}` : "", next);
+    const label = vow ? `${tr(vow.name[0], vow.name[1])}: ${vow.sound}` : "";
+    const missed = () => vBag.again(v);
+    if (side === "he") {
+      const opts = shuffle(["a", "e", "i", "o", "u"].map(x => tl(CONS_SOUND[c] + x)));
+      box.append(h("div", { class: "prompt" }, tr("How do you read it?", "Cum se citește?")), h("div", { class: "big-he", lang: "he" }, c + v), sayBtn(c + v));
+      choiceDrill(box, opts, right, label, next, false, null, missed);
+    } else {
+      // one syllable for each vowel sound: the asked one with its own sign, the others with any sign of that sound
+      const opts = shuffle(["a", "e", "i", "o", "u"].map(snd => snd === VOW_SOUND[v] ? c + v
+        : c + shuffle(vKeys.filter(k => VOW_SOUND[k] === snd))[0]));
+      box.append(h("div", { class: "prompt" }, tr("Which one is read", "Care se citește")), bigText(right));
+      choiceDrill(box, opts, c + v, label, next, true, (o) => h("span", { class: "he", lang: "he", style: { fontSize: "34px" } }, o), missed);
+    }
   } else if (kind === "finals") {
-    const box = drillFrame(tr("End forms", "Formele de la sfârșit"));
-    const f = Object.keys(FINAL_INFO)[Math.floor(Math.random() * 5)];
-    box.append(h("div", { class: "prompt" }, tr("This is the end-of-word form of which letter?", "A cărei litere este forma aceasta de la sfârșit de cuvânt?")), h("div", { class: "big-he" + heClass(), lang: "he" }, f));
+    const box = drillFrame(tr("End forms", "Formele de la sfârșit"), kind);
+    const bag = deckFor("drill-finals", Object.keys(FINAL_INFO));
+    const f = bag.next();
     const base = FINAL_INFO[f];
-    const opts = shuffle([base, ...shuffle(["כ", "מ", "נ", "פ", "צ", "ר", "ו", "ס"].filter(x => x !== base)).slice(0, 3)]);
-    choiceDrill(box, opts, base, "", next, true, heText);
+    const missed = () => bag.again(f);
+    if (side === "he") {
+      box.append(h("div", { class: "prompt" }, tr("This is the end-of-word form of which letter?", "A cărei litere este forma aceasta de la sfârșit de cuvânt?")), bigHe(f));
+      const opts = shuffle([base, ...shuffle(["כ", "מ", "נ", "פ", "צ", "ר", "ו", "ס"].filter(x => x !== base)).slice(0, 3)]);
+      choiceDrill(box, opts, base, "", next, true, heText, missed);
+    } else {
+      box.append(h("div", { class: "prompt" }, tr("How is this letter written at the end of a word?", "Cum se scrie litera aceasta la sfârșitul cuvântului?")), bigHe(base));
+      const opts = shuffle([f, ...shuffle(Object.keys(FINAL_INFO).filter(x => x !== f)).slice(0, 3)]);
+      choiceDrill(box, opts, f, "", next, true, heText, missed);
+    }
   } else if (kind === "scripts") {
-    const box = drillFrame(tr("Print and cursive", "Tipar și de mână"));
+    const box = drillFrame(tr("Print and cursive", "Tipar și de mână"), kind);
     const all = LETTERS.map(x => x.ch);
-    const ch = all[Math.floor(Math.random() * all.length)];
-    const fromCursive = Math.random() < 0.5;
+    const bag = deckFor("drill-scripts", all);
+    const ch = bag.next();
+    const fromCursive = side === "he";
     box.append(h("div", { class: "prompt" }, fromCursive ? tr("Which print letter is this handwritten one?", "Ce literă de tipar este aceasta scrisă de mână?") : tr("Which handwritten letter is this?", "Care este litera aceasta scrisă de mână?")),
       h("div", { class: "big-he" + (fromCursive ? " cursive" : ""), lang: "he" }, ch));
     const opts = shuffle([ch, ...shuffle(all.filter(x => x !== ch)).slice(0, 3)]);
@@ -694,7 +774,7 @@ function runDrill(kind) {
       if (answered) return;
       answered = true;
       drillScore.total++;
-      if (o === ch) drillScore.right++;
+      if (o === ch) drillScore.right++; else bag.again(ch);
       btns[opts.indexOf(ch)].classList.add("right");
       if (o !== ch) btns[opts.indexOf(o)].classList.add("wrong");
       const L0 = LETTERS.find(x => x.ch === ch);
@@ -711,21 +791,28 @@ function runDrill(kind) {
 
 let wordPool = null;
 async function wordDrill() {
-  const box = drillFrame(tr("Read real words", "Citește cuvinte adevărate"));
+  const box = drillFrame(tr("Read real words", "Citește cuvinte adevărate"), "words");
   if (!wordPool) {
     try {
       const res = await api.get("freqlist", { limit: 400 });
       wordPool = res.items.filter(x => !/^H9/.test(x.key) && x.hebrew.length > 1);
     } catch (e) { box.append(h("p", null, tr("Could not load words.", "Nu am putut încărca cuvintele."))); return; }
   }
-  const w = wordPool[Math.floor(Math.random() * Math.min(wordPool.length, 300))];
-  const reveal = h("div", { class: "answer", hidden: true },
-    h("div", { class: "tr", style: { fontSize: "24px" }, html: translit(lemmaTranslit(w.translit, w.key, store.settings), store.settings) }),
-    h("div", { class: "gloss" }, lang() === "ro" ? (w.glossRo || w.gloss) : w.gloss));
+  const bag = deckFor("drill-words", wordPool.slice(0, 300), x => x.key);
+  const w = bag.next();
+  const fromHebrew = sideOf("words") === "he";
+  const say = () => speak(speakableLemma(w.hebrew, w.key, store.settings));
+  const sound = h("div", { class: "tr", style: { fontSize: "24px" }, html: translit(lemmaTranslit(w.translit, w.key, store.settings), store.settings, { heb: w.hebrew }) });
+  const mean = lang() === "ro" ? (w.glossRo || w.gloss) : w.gloss;
+  // Hebrew first: read it, then see how it sounds and what it means. Meaning first: recall the word, then see it and hear it.
+  const reveal = fromHebrew
+    ? h("div", { class: "answer", hidden: true }, sound, h("div", { class: "gloss" }, mean))
+    : h("div", { class: "answer", hidden: true }, h("div", { class: "big-he", lang: "he" }, stripCantillation(w.hebrew)), sound,
+      sayBtn(speakableLemma(w.hebrew, w.key, store.settings)));
   const btns = h("div", { class: "row", style: { justifyContent: "center", marginTop: "14px" }, hidden: true },
-    h("button", { class: "btn", type: "button", onclick: () => { drillScore.total++; wordDrill(); } }, tr("Not yet", "Încă nu")),
-    h("button", { class: "btn primary", type: "button", onclick: () => { drillScore.total++; drillScore.right++; wordDrill(); } }, tr("I read it right", "Am citit corect")));
-  box.append(h("div", { class: "prompt" }, tr("Read it out loud, then check", "Citește-l cu voce tare, apoi verifică")), h("div", { class: "big-he", lang: "he" }, stripCantillation(w.hebrew)),
-    h("button", { class: "btn", type: "button", onclick: (e) => { reveal.hidden = false; btns.hidden = false; e.currentTarget.hidden = true; speak(speakableLemma(w.hebrew, w.key, store.settings)); } }, tr("Check", "Verifică")),
-    reveal, btns);
+    h("button", { class: "btn", type: "button", onclick: () => { drillScore.total++; bag.again(w); wordDrill(); } }, tr("Not yet", "Încă nu")),
+    h("button", { class: "btn primary", type: "button", onclick: () => { drillScore.total++; drillScore.right++; wordDrill(); } }, fromHebrew ? tr("I read it right", "Am citit corect") : tr("I knew it", "L-am știut")));
+  const check = h("button", { class: "btn", type: "button", onclick: (e) => { reveal.hidden = false; btns.hidden = false; e.currentTarget.hidden = true; say(); } }, tr("Check", "Verifică"));
+  if (fromHebrew) box.append(h("div", { class: "prompt" }, tr("Read it out loud, then check", "Citește-l cu voce tare, apoi verifică")), h("div", { class: "big-he", lang: "he" }, stripCantillation(w.hebrew)), check, reveal, btns);
+  else box.append(h("div", { class: "prompt" }, tr("Say the Hebrew word for this, then check", "Spune cuvântul ebraic pentru acesta, apoi verifică")), h("div", { style: { fontSize: "26px", margin: "14px 0" } }, mean), check, reveal, btns);
 }

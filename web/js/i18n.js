@@ -7,9 +7,10 @@ export function lang() {
   return store.settings.lang === "ro" ? "ro" : "en";
 }
 
-// Pick the string for the current interface language.
+// Pick the string for the current interface language. Hebrew words written in Latin letters inside it are marked
+// {sha·lom} and shown in the chosen transliteration spelling (see marks() below).
 export function tr(en, ro) {
-  return lang() === "ro" ? ro : en;
+  return marks(lang() === "ro" ? ro : en);
 }
 
 // Romanian puts "de" between a number and its noun from 20 on, except when the number ends in 01-19:
@@ -36,8 +37,8 @@ export function times(n) {
 // Bilingual content object: L({ en: "...", ro: "..." })
 export function L(obj) {
   if (obj === null || obj === undefined) return "";
-  if (typeof obj !== "object" || Array.isArray(obj)) return obj;
-  return obj[lang()] ?? obj.en ?? "";
+  if (typeof obj !== "object" || Array.isArray(obj)) return marks(obj);
+  return marks(obj[lang()] ?? obj.en ?? "");
 }
 
 // The Bible shown next to the Hebrew: "kjv" or "ro" (Cornilescu).
@@ -53,23 +54,91 @@ export function bibleLang(v = bible()) {
   return v === "ro" ? "ro" : "en";
 }
 
-// Transliteration written by hand in English style ("me·lekh", "sha·lom", "tze·dek") shown in the chosen
-// transliteration spelling (Settings, Reading; by default the interface language): Romanian uses ș, ț, h, gh, i.
-export function tl(s) {
-  const st = store.settings.translitStyle;
-  const style = st === "en" || st === "ro" ? st : lang();
-  if (style !== "ro" || !s) return s || "";
-  return romanizeTranslit(s);
+// ------------------------------------------------------------------ transliteration spelling
+// Hebrew in Latin letters is written in this app in English style: sh, tz or ts, ch (ח), kh (כ), ph or f (פ), q (ק),
+// y (י), w, and a final h for a silent ה (to·rah). Settings, Reading picks how it is shown; by default it follows the
+// interface language. Romanian spelling writes it the way Romanian Bibles and books write Hebrew words:
+// ș, ț, h, f, k, i, v, gh before e and i, and no h for a silent ה at the end of a word (Tora, Sara, Iahve).
+// A ה with a dot (mappiq, לָהּ) is pronounced and keeps its h.
+
+export function translitStyle(settings = store.settings) {
+  const st = settings && settings.translitStyle;
+  if (st === "en" || st === "ro") return st;
+  return settings && settings.lang === "ro" ? "ro" : "en";
 }
 
-export function romanizeTranslit(s) {
-  return String(s)
-    .replace(/Sh/g, "Ș").replace(/sh/g, "ș")
-    .replace(/Tz/g, "Ț").replace(/tz/g, "ț").replace(/Ts/g, "Ț").replace(/ts/g, "ț")
-    .replace(/Ch/g, "H").replace(/ch/g, "h")
-    .replace(/Kh/g, "H").replace(/kh/g, "h")
-    .replace(/g([eiéí])/g, "gh$1")
-    .replace(/Yi/g, "I").replace(/yi/g, "i").replace(/Y/g, "I").replace(/y/g, "i");
+const RO_LETTERS = { sh: "ș", tz: "ț", ts: "ț", ch: "h", kh: "h", ph: "f", th: "t", iy: "i", yi: "i", q: "k", w: "v", y: "i", g: "gh", "'": "ʼ" };
+const VOWEL = "aeiouAEIOUéíáóúÉÍÁÓÚ";
+const isUpper = (c) => c !== c.toLowerCase();
+
+// Drops the h of a silent ה at the end of each word: "to·rah" -> "to·ra", "pa.neh" -> "pa.ne". Words end at a space, a
+// comma, a slash or the end; with joins = true a hyphen also ends a word (maqaf: be.ne-ya.a.qan), otherwise it is a
+// syllable break (va-VO-hu). keep(i) says whether word i keeps its h (a ה with mappiq).
+function dropSilentH(s, joins, keep) {
+  const sep = (c) => c === undefined || /[\s,;:/()–]/.test(c) || (joins && c === "-");
+  let word = -1;
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (!sep(c) && (i === 0 || sep(s[i - 1]))) word++;
+    if ((c === "h" || c === "H") && sep(s[i + 1]) && i > 0 && VOWEL.includes(s[i - 1]) && !keep(word)) continue; // silent ה
+    out += c;
+  }
+  return out;
+}
+
+// English-style letters to Romanian ones, keeping capitals (Sh -> Ș, KO-desh -> KO-deș, Yah.Weh -> Iah.Ve).
+function roLetters(s) {
+  return s.replace(/sh|tz|ts|ch|kh|ph|th|iy|yi|q|w|y|g(?=[.·]?[eiéíEIÉÍ])|'/gi, (m, off) => {
+    let r = RO_LETTERS[m.toLowerCase()];
+    if (!isUpper(m[0])) return r;
+    // GI -> GHI, but Gi -> Ghi; SH -> Ș
+    const nextUp = m.length > 1 ? isUpper(m[1]) : isUpper(s[off + 1] || "");
+    return r.length > 1 && nextUp ? r.toUpperCase() : r[0].toUpperCase() + r.slice(1);
+  });
+}
+
+// Whether a Hebrew word ends in a pronounced ה (with mappiq): לָהּ, אֱלוֹהַּ. Marks after the letter can be in any order.
+export function mappiqEnd(heb) {
+  const m = String(heb || "").replace(/[֑-ֽֿ֯׀׃-׆]/g, "").replace(/[־\s/]+$/, "").match(/ה([ְ-ׇ]*)$/);
+  return !!(m && m[1].includes("ּ"));
+}
+
+// For each Latin word of a transliteration, whether its ה at the end is pronounced, from the Hebrew it spells.
+// The words are matched one to one when both have the same count, otherwise only the last word is checked.
+export function keepFinalH(heb, words, joins) {
+  const hw = String(heb || "").split(joins ? /[\s־]+/ : /\s+/).filter(Boolean);
+  if (hw.length === words) return (i) => mappiqEnd(hw[i]);
+  const last = mappiqEnd(hw[hw.length - 1]);
+  return (i) => i === words - 1 && last;
+}
+
+// A transliteration in Romanian spelling. joins: a hyphen joins two words (data and dotted text) instead of breaking
+// syllables; keep(i): word i ends in a pronounced ה.
+export function roSpell(s, joins = false, keep = () => false) {
+  return roLetters(dropSilentH(String(s), joins, keep));
+}
+
+// A transliteration written by hand in English style ("me·lekh", "sha·lom", "tze·dek"), shown in the chosen spelling.
+// heb is the Hebrew it spells, so a final ה with mappiq keeps its h. "q / k|k" gives the Romanian form by hand.
+export function tl(s, heb) {
+  if (!s) return "";
+  s = String(s);
+  const bar = s.indexOf("|");
+  if (translitStyle() !== "ro") return bar >= 0 ? s.slice(0, bar) : s;
+  if (bar >= 0) return s.slice(bar + 1);
+  const joins = s.includes("·");
+  const words = s.split(joins ? /[\s,;:/()–-]+/ : /[\s,;:/()–]+/).filter(Boolean).length;
+  return roSpell(s, joins, heb ? keepFinalH(heb, words, joins) : () => false);
+}
+
+// Hebrew words inside interface text, marked {…}: "the article {ha}", "{dagesh}", "{mappiq|mapik}" (English|Romanian
+// form, when the Romanian one is not simply the same letters respelled). Shown in the chosen transliteration spelling.
+const MARK_RE = /\{([A-Za-zÀ-ɏʼʻ'·\- ,/–]+)(?:\|([A-Za-zÀ-ɏʼʻ'·\- ,/–]*))?\}/g;
+export function marks(s) {
+  if (typeof s !== "string" || s.indexOf("{") < 0) return s;
+  const ro = translitStyle() === "ro";
+  return s.replace(MARK_RE, (m, en, roForm) => !ro ? en : roForm !== undefined ? roForm : tl(en));
 }
 
 // Meaning of a word in the interface language. Items may carry gloss (English), glossRo / gloss_ro

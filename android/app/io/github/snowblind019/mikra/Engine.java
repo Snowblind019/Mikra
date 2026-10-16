@@ -62,6 +62,12 @@ final class Engine {
 
     static boolean ready() { return http != null; } // never waits: the UI thread asks while start() may still be copying
 
+    /** The address the window opens: a one-time start link that gives it the key as a cookie (see Http /__start). */
+    static String startUrl() {
+        Http h = http;
+        return h == null ? null : "http://127.0.0.1:" + port + "/__start?t=" + h.newStartToken();
+    }
+
     /**
      * SQLite can't read a file inside the APK, so the database is copied out once (and again after each app update).
      * It goes to the no-backup folder: Android's cloud backup has a size limit and the file comes with the app anyway.

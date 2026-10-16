@@ -4,7 +4,7 @@
 #        ./run.sh --no-browser
 #        ./run.sh --port 8800
 set -u
-cd "$(dirname "$(readlink -f "$0")")"
+cd "$(dirname "$(readlink -f "$0")")" || exit 1
 
 find_python() {
   for p in python3 python; do
